@@ -1,6 +1,8 @@
 import 'package:material_ui/material_ui.dart';
 
 import '../../data/mock/mock_decks.dart';
+import '../../domain/models/deck.dart';
+import 'create_deck_screen.dart';
 
 class DeckLibraryScreen extends StatefulWidget {
   const DeckLibraryScreen({super.key});
@@ -12,26 +14,76 @@ class DeckLibraryScreen extends StatefulWidget {
 class _DeckLibraryScreenState extends State<DeckLibraryScreen> {
   String _searchQuery = '';
 
+  final _searchController = TextEditingController();
+
+  final List<MockDeckEntry> _decks = List<MockDeckEntry>.of(mockDecks);
+
   static const primaryColor = Color(0xFF7C3AED);
   static const backgroundColor = Color(0xFFFAF8FF);
   static const lavenderColor = Color(0xFFEDE9FE);
 
   @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _createDeck() async {
+    final draft = await Navigator.of(context).push<DeckDraft>(
+      MaterialPageRoute(builder: (context) => const CreateDeckScreen()),
+    );
+
+    if (!mounted || draft == null) {
+      return;
+    }
+
+    final now = DateTime.now();
+
+    final newDeck = Deck(
+      id: 'deck_${now.microsecondsSinceEpoch}',
+      ownerId: 'mock_user',
+      title: draft.title,
+      description: draft.description,
+      createdAt: now,
+      updatedAt: now,
+    );
+
+    _searchController.clear();
+
+    setState(() {
+      _searchQuery = '';
+
+      _decks.insert(0, MockDeckEntry(deck: newDeck, cardCount: 0));
+    });
+
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Deck created successfully!')));
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final filteredDecks = mockDecks.where((entry) {
+    final filteredDecks = _decks.where((entry) {
       final query = _searchQuery.trim().toLowerCase();
 
       return entry.deck.title.toLowerCase().contains(query) ||
           entry.deck.description.toLowerCase().contains(query);
     }).toList();
 
-    final totalCards = mockDecks.fold<int>(
+    final totalCards = _decks.fold<int>(
       0,
       (total, entry) => total + entry.cardCount,
     );
 
     return Scaffold(
       backgroundColor: backgroundColor,
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _createDeck,
+        backgroundColor: primaryColor,
+        foregroundColor: Colors.white,
+        icon: const Icon(Icons.add),
+        label: const Text('Create Deck'),
+      ),
       appBar: AppBar(
         backgroundColor: backgroundColor,
         surfaceTintColor: Colors.transparent,
@@ -42,7 +94,7 @@ class _DeckLibraryScreenState extends State<DeckLibraryScreen> {
       ),
       body: SafeArea(
         child: ListView(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 100),
           children: [
             const Text(
               'Build your knowledge, one card at a time.',
@@ -69,7 +121,7 @@ class _DeckLibraryScreenState extends State<DeckLibraryScreen> {
                   ),
                   const SizedBox(height: 12),
                   Text(
-                    '${mockDecks.length} Decks',
+                    '${_decks.length} Decks',
                     style: const TextStyle(
                       fontSize: 30,
                       fontWeight: FontWeight.bold,
@@ -88,6 +140,7 @@ class _DeckLibraryScreenState extends State<DeckLibraryScreen> {
 
             // Search bar
             TextField(
+              controller: _searchController,
               onChanged: (value) {
                 setState(() {
                   _searchQuery = value;
