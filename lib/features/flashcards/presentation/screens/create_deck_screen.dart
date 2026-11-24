@@ -1,5 +1,7 @@
 import 'package:material_ui/material_ui.dart';
 
+import '../../domain/models/deck.dart';
+
 class DeckDraft {
   final String title;
   final String description;
@@ -8,7 +10,9 @@ class DeckDraft {
 }
 
 class CreateDeckScreen extends StatefulWidget {
-  const CreateDeckScreen({super.key});
+  final Deck? initialDeck;
+
+  const CreateDeckScreen({super.key, this.initialDeck});
 
   @override
   State<CreateDeckScreen> createState() => _CreateDeckScreenState();
@@ -17,12 +21,27 @@ class CreateDeckScreen extends StatefulWidget {
 class _CreateDeckScreenState extends State<CreateDeckScreen> {
   final _formKey = GlobalKey<FormState>();
 
-  final _titleController = TextEditingController();
-  final _descriptionController = TextEditingController();
+  late final TextEditingController _titleController;
+  late final TextEditingController _descriptionController;
 
   static const primaryColor = Color(0xFF7C3AED);
   static const backgroundColor = Color(0xFFFAF8FF);
   static const lavenderColor = Color(0xFFEDE9FE);
+
+  bool get _isEditing => widget.initialDeck != null;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _titleController = TextEditingController(
+      text: widget.initialDeck?.title ?? '',
+    );
+
+    _descriptionController = TextEditingController(
+      text: widget.initialDeck?.description ?? '',
+    );
+  }
 
   @override
   void dispose() {
@@ -73,12 +92,12 @@ class _CreateDeckScreenState extends State<CreateDeckScreen> {
     return Scaffold(
       backgroundColor: backgroundColor,
       appBar: AppBar(
+        title: Text(
+          _isEditing ? 'Edit Deck' : 'Create Deck',
+          style: const TextStyle(fontWeight: FontWeight.bold),
+        ),
         backgroundColor: backgroundColor,
         surfaceTintColor: Colors.transparent,
-        title: const Text(
-          'Create Deck',
-          style: TextStyle(fontWeight: FontWeight.bold),
-        ),
       ),
       body: SafeArea(
         child: Form(
@@ -104,10 +123,15 @@ class _CreateDeckScreenState extends State<CreateDeckScreen> {
 
               const SizedBox(height: 24),
 
-              const Text(
-                'Start learning something new',
+              Text(
+                _isEditing
+                    ? 'Update your deck'
+                    : 'Start learning something new',
                 textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+                style: const TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
 
               const SizedBox(height: 8),
@@ -156,6 +180,7 @@ class _CreateDeckScreenState extends State<CreateDeckScreen> {
 
               const SizedBox(height: 24),
 
+              // Create or save deck
               FilledButton(
                 onPressed: _submitDeck,
                 style: FilledButton.styleFrom(
@@ -166,18 +191,23 @@ class _CreateDeckScreenState extends State<CreateDeckScreen> {
                     borderRadius: BorderRadius.circular(16),
                   ),
                 ),
-                child: const Text(
-                  'Create Deck',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                child: Text(
+                  _isEditing ? 'Save Changes' : 'Create Deck',
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
 
               const SizedBox(height: 16),
 
-              const Text(
-                'You can add flashcards after creating your deck.',
+              Text(
+                _isEditing
+                    ? 'Your existing flashcards will be preserved.'
+                    : 'You can add flashcards after creating your deck.',
                 textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 12, color: Colors.black54),
+                style: const TextStyle(fontSize: 12, color: Colors.black54),
               ),
             ],
           ),

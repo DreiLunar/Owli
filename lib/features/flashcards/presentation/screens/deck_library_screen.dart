@@ -53,16 +53,18 @@ class _DeckLibraryScreenState extends State<DeckLibraryScreen> {
     ).showSnackBar(const SnackBar(content: Text('Deck created successfully!')));
   }
 
-  // Open the selected deck and its flashcards.
-  void _openDeck(Deck deck) {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (context) => DeckDetailsScreen(
-          deck: deck,
-          flashcards: _store.cardsForDeck(deck.id),
-        ),
+  Future<void> _openDeck(Deck deck) async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (context) => DeckDetailsScreen(deck: deck, store: _store),
       ),
     );
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {});
   }
 
   @override

@@ -2,20 +2,102 @@ import 'package:material_ui/material_ui.dart';
 
 import '../../domain/models/deck.dart';
 import '../../domain/models/flashcard.dart';
+import '../../data/mock/mock_study_store.dart';
+import 'create_deck_screen.dart';
 
-class DeckDetailsScreen extends StatelessWidget {
+class DeckDetailsScreen extends StatefulWidget {
   final Deck deck;
-  final List<Flashcard> flashcards;
+  final MockStudyStore store;
 
-  const DeckDetailsScreen({
-    super.key,
-    required this.deck,
-    required this.flashcards,
-  });
+  const DeckDetailsScreen({super.key, required this.deck, required this.store});
+
+  @override
+  State<DeckDetailsScreen> createState() => _DeckDetailsScreenState();
+}
+
+class _DeckDetailsScreenState extends State<DeckDetailsScreen> {
+  late Deck deck;
 
   static const primaryColor = Color(0xFF7C3AED);
   static const backgroundColor = Color(0xFFFAF8FF);
   static const lavenderColor = Color(0xFFEDE9FE);
+
+  List<Flashcard> get flashcards => widget.store.cardsForDeck(deck.id);
+
+  @override
+  void initState() {
+    super.initState();
+    deck = widget.deck;
+  }
+
+  // EDIT DECK
+  Future<void> _editDeck() async {
+    final draft = await Navigator.of(context).push<DeckDraft>(
+      MaterialPageRoute(
+        builder: (context) => CreateDeckScreen(initialDeck: deck),
+      ),
+    );
+
+    if (!mounted || draft == null) {
+      return;
+    }
+
+    final updatedDeck = widget.store.updateDeck(
+      deckId: deck.id,
+      title: draft.title,
+      description: draft.description,
+    );
+
+    setState(() {
+      deck = updatedDeck;
+    });
+
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Deck updated successfully!')));
+  }
+
+  // DELETE DECK
+  Future<void> _deleteDeck() async {
+    final cardCount = flashcards.length;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Delete deck?'),
+          content: Text(
+            'This will delete "${deck.title}" '
+            'and its $cardCount flashcards. '
+            'This action cannot be undone.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(dialogContext, false);
+              },
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.pop(dialogContext, true);
+              },
+              style: TextButton.styleFrom(foregroundColor: Colors.red),
+              child: const Text('Delete'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (!mounted || confirmed != true) {
+      return;
+    }
+
+    widget.store.deleteDeck(deck.id);
+
+    Navigator.of(context).pop();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -25,6 +107,18 @@ class DeckDetailsScreen extends StatelessWidget {
         title: const Text('Deck Details'),
         backgroundColor: backgroundColor,
         surfaceTintColor: Colors.transparent,
+        actions: [
+          IconButton(
+            tooltip: 'Edit deck',
+            onPressed: _editDeck,
+            icon: const Icon(Icons.edit_outlined),
+          ),
+          IconButton(
+            tooltip: 'Delete deck',
+            onPressed: _deleteDeck,
+            icon: const Icon(Icons.delete_outline, color: Colors.red),
+          ),
+        ],
       ),
       body: SafeArea(
         child: ListView(
@@ -45,6 +139,7 @@ class DeckDetailsScreen extends StatelessWidget {
                     color: primaryColor,
                     size: 36,
                   ),
+
                   const SizedBox(height: 16),
 
                   Text(
@@ -89,7 +184,9 @@ class DeckDetailsScreen extends StatelessWidget {
                 child: Column(
                   children: [
                     Icon(Icons.style_outlined, size: 56, color: Colors.grey),
+
                     SizedBox(height: 16),
+
                     Text(
                       'No flashcards yet',
                       style: TextStyle(
@@ -97,7 +194,9 @@ class DeckDetailsScreen extends StatelessWidget {
                         fontSize: 16,
                       ),
                     ),
+
                     SizedBox(height: 8),
+
                     Text(
                       'Your flashcards will appear here.',
                       textAlign: TextAlign.center,
