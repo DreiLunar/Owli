@@ -1,8 +1,10 @@
 import 'package:material_ui/material_ui.dart';
 
-import '../../data/mock/mock_decks.dart';
+import '../../data/mock/mock_study_store.dart';
 import '../../domain/models/deck.dart';
+
 import 'create_deck_screen.dart';
+import 'deck_details_screen.dart';
 
 class DeckLibraryScreen extends StatefulWidget {
   const DeckLibraryScreen({super.key});
@@ -12,11 +14,11 @@ class DeckLibraryScreen extends StatefulWidget {
 }
 
 class _DeckLibraryScreenState extends State<DeckLibraryScreen> {
-  String _searchQuery = '';
+  final _store = MockStudyStore();
 
   final _searchController = TextEditingController();
 
-  final List<MockDeckEntry> _decks = List<MockDeckEntry>.of(mockDecks);
+  String _searchQuery = '';
 
   static const primaryColor = Color(0xFF7C3AED);
   static const backgroundColor = Color(0xFFFAF8FF);
@@ -28,6 +30,7 @@ class _DeckLibraryScreenState extends State<DeckLibraryScreen> {
     super.dispose();
   }
 
+  // Create a deck through the store.
   Future<void> _createDeck() async {
     final draft = await Navigator.of(context).push<DeckDraft>(
       MaterialPageRoute(builder: (context) => const CreateDeckScreen()),
@@ -37,23 +40,12 @@ class _DeckLibraryScreenState extends State<DeckLibraryScreen> {
       return;
     }
 
-    final now = DateTime.now();
-
-    final newDeck = Deck(
-      id: 'deck_${now.microsecondsSinceEpoch}',
-      ownerId: 'mock_user',
-      title: draft.title,
-      description: draft.description,
-      createdAt: now,
-      updatedAt: now,
-    );
-
     _searchController.clear();
 
     setState(() {
-      _searchQuery = '';
+      _store.createDeck(title: draft.title, description: draft.description);
 
-      _decks.insert(0, MockDeckEntry(deck: newDeck, cardCount: 0));
+      _searchQuery = '';
     });
 
     ScaffoldMessenger.of(
@@ -61,22 +53,41 @@ class _DeckLibraryScreenState extends State<DeckLibraryScreen> {
     ).showSnackBar(const SnackBar(content: Text('Deck created successfully!')));
   }
 
+  // Open the selected deck and its flashcards.
+  void _openDeck(Deck deck) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (context) => DeckDetailsScreen(
+          deck: deck,
+          flashcards: _store.cardsForDeck(deck.id),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final filteredDecks = _decks.where((entry) {
-      final query = _searchQuery.trim().toLowerCase();
+    final decks = _store.decks;
 
-      return entry.deck.title.toLowerCase().contains(query) ||
-          entry.deck.description.toLowerCase().contains(query);
+    final query = _searchQuery.trim().toLowerCase();
+
+    final filteredDecks = decks.where((deck) {
+      return deck.title.toLowerCase().contains(query) ||
+          deck.description.toLowerCase().contains(query);
     }).toList();
-
-    final totalCards = _decks.fold<int>(
-      0,
-      (total, entry) => total + entry.cardCount,
-    );
 
     return Scaffold(
       backgroundColor: backgroundColor,
+
+      appBar: AppBar(
+        backgroundColor: backgroundColor,
+        surfaceTintColor: Colors.transparent,
+        title: const Text(
+          'Study',
+          style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold),
+        ),
+      ),
+
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _createDeck,
         backgroundColor: primaryColor,
@@ -84,22 +95,13 @@ class _DeckLibraryScreenState extends State<DeckLibraryScreen> {
         icon: const Icon(Icons.add),
         label: const Text('Create Deck'),
       ),
-      appBar: AppBar(
-        backgroundColor: backgroundColor,
-        surfaceTintColor: Colors.transparent,
-        title: const Text(
-          'Study',
-          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 26),
-        ),
-      ),
+
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.fromLTRB(20, 20, 20, 100),
           children: [
-            const Text(
-              'Build your knowledge, one card at a time.',
-              style: TextStyle(color: Colors.black54, fontSize: 14),
-            ),
+            const Text('Build your knowledge, one card at a time.'),
+
             const SizedBox(height: 24),
 
             // Library summary
@@ -119,17 +121,21 @@ class _DeckLibraryScreenState extends State<DeckLibraryScreen> {
                       fontWeight: FontWeight.w600,
                     ),
                   ),
+
                   const SizedBox(height: 12),
+
                   Text(
-                    '${_decks.length} Decks',
+                    '${decks.length} Decks',
                     style: const TextStyle(
                       fontSize: 30,
                       fontWeight: FontWeight.bold,
                       color: Color(0xFF4C1D95),
                     ),
                   ),
+
                   Text(
-                    '$totalCards flashcards to explore',
+                    '${_store.totalCardCount} '
+                    'flashcards to explore',
                     style: const TextStyle(color: primaryColor),
                   ),
                 ],
@@ -138,7 +144,7 @@ class _DeckLibraryScreenState extends State<DeckLibraryScreen> {
 
             const SizedBox(height: 24),
 
-            // Search bar
+            // Search
             TextField(
               controller: _searchController,
               onChanged: (value) {
@@ -160,7 +166,6 @@ class _DeckLibraryScreenState extends State<DeckLibraryScreen> {
 
             const SizedBox(height: 24),
 
-            // Deck list heading
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -168,16 +173,12 @@ class _DeckLibraryScreenState extends State<DeckLibraryScreen> {
                   'My Decks',
                   style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                 ),
-                Text(
-                  '${filteredDecks.length} decks',
-                  style: const TextStyle(color: Colors.black54),
-                ),
+                Text('${filteredDecks.length} decks'),
               ],
             ),
 
             const SizedBox(height: 16),
 
-            // Deck list or empty state
             if (filteredDecks.isEmpty)
               const Padding(
                 padding: EdgeInsets.symmetric(vertical: 48),
@@ -197,56 +198,51 @@ class _DeckLibraryScreenState extends State<DeckLibraryScreen> {
     );
   }
 
-  Widget _buildDeckCard(MockDeckEntry entry) {
-    return Container(
+  Widget _buildDeckCard(Deck deck) {
+    final cardCount = _store.cardCountForDeck(deck.id);
+
+    return Card(
+      color: Colors.white,
       margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFE8E2F3)),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              color: lavenderColor,
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: const Icon(Icons.style_outlined, color: primaryColor),
+
+      child: ListTile(
+        contentPadding: const EdgeInsets.all(12),
+
+        onTap: () => _openDeck(deck),
+
+        leading: Container(
+          width: 48,
+          height: 48,
+          decoration: BoxDecoration(
+            color: lavenderColor,
+            borderRadius: BorderRadius.circular(14),
           ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  entry.deck.title,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  entry.deck.description,
-                  style: const TextStyle(fontSize: 12, color: Colors.black54),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  '${entry.cardCount} cards',
-                  style: const TextStyle(
-                    color: primaryColor,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
+          child: const Icon(Icons.style_outlined, color: primaryColor),
+        ),
+
+        title: Text(
+          deck.title,
+          style: const TextStyle(fontWeight: FontWeight.w600),
+        ),
+
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (deck.description.isNotEmpty) Text(deck.description),
+
+            const SizedBox(height: 6),
+
+            Text(
+              '$cardCount cards',
+              style: const TextStyle(
+                color: primaryColor,
+                fontWeight: FontWeight.w600,
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
+
+        trailing: const Icon(Icons.chevron_right),
       ),
     );
   }
