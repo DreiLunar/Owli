@@ -38,6 +38,12 @@
 *.jks
 *.keystore
 key.properties
+*-firebase-adminsdk-*.json
+serviceAccount*.json
+
+.firebase/
+firebase-debug.log
+firestore-debug.log
 
 # Debugging artifacts
 app.*.symbols
