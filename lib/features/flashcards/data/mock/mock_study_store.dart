@@ -131,4 +131,60 @@ class MockStudyStore {
 
     return flashcard;
   }
+
+  int _findFlashcardIndex({required String deckId, required String cardId}) {
+    final index = _flashcards.indexWhere(
+      (card) => card.id == cardId && card.deckId == deckId,
+    );
+
+    if (index == -1) {
+      throw StateError('Flashcard not found in this deck.');
+    }
+
+    return index;
+  }
+
+  // UPDATE FLASHCARD
+  Flashcard updateFlashcard({
+    required String deckId,
+    required String cardId,
+    required String front,
+    required String back,
+  }) {
+    final cleanFront = front.trim();
+    final cleanBack = back.trim();
+
+    if (cleanFront.isEmpty) {
+      throw ArgumentError('Flashcard question cannot be empty.');
+    }
+
+    if (cleanBack.isEmpty) {
+      throw ArgumentError('Flashcard answer cannot be empty.');
+    }
+
+    final index = _findFlashcardIndex(deckId: deckId, cardId: cardId);
+
+    final existingCard = _flashcards[index];
+
+    final updatedCard = Flashcard(
+      id: existingCard.id,
+      deckId: existingCard.deckId,
+      sourceNoteId: existingCard.sourceNoteId,
+      front: cleanFront,
+      back: cleanBack,
+      createdAt: existingCard.createdAt,
+      updatedAt: DateTime.now(),
+    );
+
+    _flashcards[index] = updatedCard;
+
+    return updatedCard;
+  }
+
+  // DELETE FLASHCARD
+  void deleteFlashcard({required String deckId, required String cardId}) {
+    final index = _findFlashcardIndex(deckId: deckId, cardId: cardId);
+
+    _flashcards.removeAt(index);
+  }
 }

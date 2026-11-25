@@ -125,6 +125,81 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen> {
     );
   }
 
+  Future<void> _editFlashcard(Flashcard card) async {
+    final draft = await Navigator.of(context).push<FlashcardDraft>(
+      MaterialPageRoute(
+        builder: (context) =>
+            CreateFlashcardScreen(deckTitle: deck.title, initialCard: card),
+      ),
+    );
+
+    if (!mounted || draft == null) {
+      return;
+    }
+
+    setState(() {
+      widget.store.updateFlashcard(
+        deckId: deck.id,
+        cardId: card.id,
+        front: draft.front,
+        back: draft.back,
+      );
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Flashcard updated successfully!')),
+    );
+  }
+
+  Future<void> _deleteFlashcard(Flashcard card) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Delete flashcard?'),
+
+          content: Text(
+            'Are you sure you want to delete '
+            'this flashcard?\n\n'
+            '${card.front}\n\n'
+            'This action cannot be undone.',
+            maxLines: 10,
+            overflow: TextOverflow.ellipsis,
+          ),
+
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(dialogContext, false);
+              },
+              child: const Text('Cancel'),
+            ),
+
+            TextButton(
+              onPressed: () {
+                Navigator.pop(dialogContext, true);
+              },
+              style: TextButton.styleFrom(foregroundColor: Colors.red),
+              child: const Text('Delete'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (!mounted || confirmed != true) {
+      return;
+    }
+
+    setState(() {
+      widget.store.deleteFlashcard(deckId: deck.id, cardId: card.id);
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Flashcard deleted successfully!')),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -251,20 +326,51 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen> {
 
   Widget _buildFlashcard(Flashcard card) {
     return Card(
+      key: ValueKey(card.id),
       margin: const EdgeInsets.only(bottom: 12),
       color: Colors.white,
+
       child: Padding(
         padding: const EdgeInsets.all(16),
+
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
+
           children: [
-            const Text(
-              'QUESTION',
-              style: TextStyle(
-                color: primaryColor,
-                fontSize: 11,
-                fontWeight: FontWeight.bold,
-              ),
+            // Question label and action buttons
+            Row(
+              children: [
+                const Expanded(
+                  child: Text(
+                    'QUESTION',
+                    style: TextStyle(
+                      color: primaryColor,
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+
+                IconButton(
+                  tooltip: 'Edit flashcard',
+                  onPressed: () => _editFlashcard(card),
+                  icon: const Icon(
+                    Icons.edit_outlined,
+                    color: primaryColor,
+                    size: 20,
+                  ),
+                ),
+
+                IconButton(
+                  tooltip: 'Delete flashcard',
+                  onPressed: () => _deleteFlashcard(card),
+                  icon: const Icon(
+                    Icons.delete_outline,
+                    color: Colors.red,
+                    size: 20,
+                  ),
+                ),
+              ],
             ),
 
             const SizedBox(height: 8),

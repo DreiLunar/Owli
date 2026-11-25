@@ -1,5 +1,7 @@
 import 'package:material_ui/material_ui.dart';
 
+import '../../domain/models/flashcard.dart';
+
 class FlashcardDraft {
   final String front;
   final String back;
@@ -9,8 +11,13 @@ class FlashcardDraft {
 
 class CreateFlashcardScreen extends StatefulWidget {
   final String deckTitle;
+  final Flashcard? initialCard;
 
-  const CreateFlashcardScreen({super.key, required this.deckTitle});
+  const CreateFlashcardScreen({
+    super.key,
+    required this.deckTitle,
+    this.initialCard,
+  });
 
   @override
   State<CreateFlashcardScreen> createState() => _CreateFlashcardScreenState();
@@ -19,12 +26,27 @@ class CreateFlashcardScreen extends StatefulWidget {
 class _CreateFlashcardScreenState extends State<CreateFlashcardScreen> {
   final _formKey = GlobalKey<FormState>();
 
-  final _frontController = TextEditingController();
-  final _backController = TextEditingController();
+  late final TextEditingController _frontController;
+  late final TextEditingController _backController;
 
   static const primaryColor = Color(0xFF7C3AED);
   static const backgroundColor = Color(0xFFFAF8FF);
   static const lavenderColor = Color(0xFFEDE9FE);
+
+  bool get _isEditing => widget.initialCard != null;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _frontController = TextEditingController(
+      text: widget.initialCard?.front ?? '',
+    );
+
+    _backController = TextEditingController(
+      text: widget.initialCard?.back ?? '',
+    );
+  }
 
   @override
   void dispose() {
@@ -33,6 +55,7 @@ class _CreateFlashcardScreenState extends State<CreateFlashcardScreen> {
     super.dispose();
   }
 
+  // SUBMIT FLASHCARD
   void _submitFlashcard() {
     if (!_formKey.currentState!.validate()) {
       return;
@@ -66,7 +89,7 @@ class _CreateFlashcardScreenState extends State<CreateFlashcardScreen> {
       backgroundColor: backgroundColor,
 
       appBar: AppBar(
-        title: const Text('Add Flashcard'),
+        title: Text(_isEditing ? 'Edit Flashcard' : 'Add Flashcard'),
         backgroundColor: backgroundColor,
         surfaceTintColor: Colors.transparent,
       ),
@@ -87,9 +110,9 @@ class _CreateFlashcardScreenState extends State<CreateFlashcardScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      'ADDING TO',
-                      style: TextStyle(
+                    Text(
+                      _isEditing ? 'EDITING IN' : 'ADDING TO',
+                      style: const TextStyle(
                         color: primaryColor,
                         fontSize: 12,
                         fontWeight: FontWeight.bold,
@@ -153,6 +176,7 @@ class _CreateFlashcardScreenState extends State<CreateFlashcardScreen> {
 
               const SizedBox(height: 24),
 
+              // Save or update flashcard
               FilledButton(
                 onPressed: _submitFlashcard,
                 style: FilledButton.styleFrom(
@@ -163,9 +187,12 @@ class _CreateFlashcardScreenState extends State<CreateFlashcardScreen> {
                     borderRadius: BorderRadius.circular(16),
                   ),
                 ),
-                child: const Text(
-                  'Save Flashcard',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                child: Text(
+                  _isEditing ? 'Save Changes' : 'Save Flashcard',
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
 

@@ -200,4 +200,158 @@ void main() {
       expect(store.decks.length, 2);
     });
   });
+
+  group('Flashcard Update and Delete', () {
+    test('Update a flashcard while preserving identity', () {
+      final original = store.cardsForDeck('deck_001').first;
+
+      final updated = store.updateFlashcard(
+        deckId: original.deckId,
+        cardId: original.id,
+        front: 'Updated question',
+        back: 'Updated answer',
+      );
+
+      expect(updated.id, original.id);
+      expect(updated.deckId, original.deckId);
+      expect(updated.sourceNoteId, original.sourceNoteId);
+      expect(updated.createdAt, original.createdAt);
+      expect(updated.front, 'Updated question');
+      expect(updated.back, 'Updated answer');
+      expect(store.totalCardCount, 6);
+      expect(store.cardCountForDeck('deck_001'), 2);
+
+      final stored = store.cardsForDeck('deck_001').first;
+
+      expect(stored.front, 'Updated question');
+      expect(stored.back, 'Updated answer');
+    });
+
+    test('Reject an empty updated question', () {
+      expect(
+        () => store.updateFlashcard(
+          deckId: 'deck_001',
+          cardId: 'card_001',
+          front: '   ',
+          back: 'Valid answer',
+        ),
+        throwsArgumentError,
+      );
+
+      expect(store.cardsForDeck('deck_001').first.front, 'What is a DFA?');
+    });
+
+    test('Reject an empty updated answer', () {
+      expect(
+        () => store.updateFlashcard(
+          deckId: 'deck_001',
+          cardId: 'card_001',
+          front: 'Valid question',
+          back: '   ',
+        ),
+        throwsArgumentError,
+      );
+    });
+
+    test('Trim updated question and answer', () {
+      final updated = store.updateFlashcard(
+        deckId: 'deck_001',
+        cardId: 'card_001',
+        front: '  Updated question  ',
+        back: '  Updated answer  ',
+      );
+
+      expect(updated.front, 'Updated question');
+      expect(updated.back, 'Updated answer');
+    });
+
+    test('Reject updating an unknown flashcard', () {
+      expect(
+        () => store.updateFlashcard(
+          deckId: 'deck_001',
+          cardId: 'invalid_card',
+          front: 'Question',
+          back: 'Answer',
+        ),
+        throwsStateError,
+      );
+    });
+
+    test('Reject updating a card from another deck', () {
+      expect(
+        () => store.updateFlashcard(
+          deckId: 'deck_002',
+          cardId: 'card_001',
+          front: 'Question',
+          back: 'Answer',
+        ),
+        throwsStateError,
+      );
+    });
+
+    test('Delete an existing flashcard', () {
+      store.deleteFlashcard(deckId: 'deck_001', cardId: 'card_001');
+
+      expect(store.totalCardCount, 5);
+      expect(store.cardCountForDeck('deck_001'), 1);
+      expect(store.decks.length, 3);
+
+      expect(
+        store.cardsForDeck('deck_001').any((card) => card.id == 'card_001'),
+        isFalse,
+      );
+    });
+
+    test('Reject deleting an unknown flashcard', () {
+      expect(
+        () => store.deleteFlashcard(deckId: 'deck_001', cardId: 'invalid_card'),
+        throwsStateError,
+      );
+
+      expect(store.totalCardCount, 6);
+    });
+
+    test('Reject deleting a card from another deck', () {
+      expect(
+        () => store.deleteFlashcard(deckId: 'deck_002', cardId: 'card_001'),
+        throwsStateError,
+      );
+
+      expect(store.totalCardCount, 6);
+    });
+
+    test('Deleting all cards preserves the deck', () {
+      store.deleteFlashcard(deckId: 'deck_001', cardId: 'card_001');
+
+      store.deleteFlashcard(deckId: 'deck_001', cardId: 'card_002');
+
+      expect(store.cardsForDeck('deck_001'), isEmpty);
+      expect(store.decks.length, 3);
+      expect(store.totalCardCount, 4);
+      expect(store.cardCountForDeck('deck_002'), 2);
+      expect(store.cardCountForDeck('deck_003'), 2);
+    });
+
+    test('Update and delete a newly created flashcard', () {
+      final card = store.createFlashcard(
+        deckId: 'deck_001',
+        front: 'Original question',
+        back: 'Original answer',
+      );
+
+      final updated = store.updateFlashcard(
+        deckId: card.deckId,
+        cardId: card.id,
+        front: 'New question',
+        back: 'New answer',
+      );
+
+      expect(updated.id, card.id);
+      expect(updated.front, 'New question');
+
+      store.deleteFlashcard(deckId: card.deckId, cardId: card.id);
+
+      expect(store.totalCardCount, 6);
+    });
+  });
 }
