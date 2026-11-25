@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:owli/features/flashcards/data/mock/mock_study_store.dart';
 import 'package:owli/features/flashcards/domain/services/study_session_controller.dart';
+import 'package:owli/features/flashcards/domain/models/study_progress.dart';
 import 'package:owli/features/flashcards/presentation/screens/deck_details_screen.dart';
 import 'package:owli/features/flashcards/presentation/screens/study_session_screen.dart';
 
@@ -19,7 +20,19 @@ void main() {
     );
   });
 
+  // CONFIGURE TEST VIEWPORT
+  Future<void> configureViewport(WidgetTester tester) async {
+    await tester.binding.setSurfaceSize(const Size(800, 1200));
+
+    addTearDown(() {
+      return tester.binding.setSurfaceSize(null);
+    });
+  }
+
+  // PUMP STUDY SESSION SCREEN
   Future<void> pumpStudyScreen(WidgetTester tester) async {
+    await configureViewport(tester);
+
     await tester.pumpWidget(
       MaterialApp(
         home: StudySessionScreen(
@@ -32,6 +45,24 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  // TAP A CONTROL BY KEY
+  Future<void> tapControl(WidgetTester tester, String key) async {
+    final finder = find.byKey(ValueKey(key));
+
+    if (finder.evaluate().isEmpty) {
+      await tester.scrollUntilVisible(
+        finder,
+        150,
+        scrollable: find.byType(Scrollable).first,
+      );
+    }
+
+    await tester.ensureVisible(finder);
+    await tester.tap(finder);
+    await tester.pumpAndSettle();
+  }
+
+  // MILESTONE 3.2 — INTERACTIVE FLASHCARD FLIP
   group('Study Session Screen', () {
     testWidgets('Initially displays question and hides answer', (tester) async {
       await pumpStudyScreen(tester);
@@ -107,17 +138,17 @@ void main() {
     });
 
     testWidgets('Start study opens a fresh session', (tester) async {
+      await configureViewport(tester);
+
       await tester.pumpWidget(
         MaterialApp(
           home: DeckDetailsScreen(deck: store.decks.first, store: store),
         ),
       );
 
-      final startButton = find.byKey(const ValueKey('start_study_button'));
-
-      await tester.ensureVisible(startButton);
-      await tester.tap(startButton);
       await tester.pumpAndSettle();
+
+      await tapControl(tester, 'start_study_button');
 
       expect(find.byType(StudySessionScreen), findsOneWidget);
 
@@ -132,9 +163,7 @@ void main() {
 
       expect(find.byType(DeckDetailsScreen), findsOneWidget);
 
-      await tester.ensureVisible(startButton);
-      await tester.tap(startButton);
-      await tester.pumpAndSettle();
+      await tapControl(tester, 'start_study_button');
 
       expect(find.text('QUESTION'), findsOneWidget);
 
@@ -142,6 +171,8 @@ void main() {
     });
 
     testWidgets('Start study is disabled for an empty deck', (tester) async {
+      await configureViewport(tester);
+
       final emptyDeck = store.createDeck(title: 'Empty Deck');
 
       await tester.pumpWidget(
@@ -149,6 +180,8 @@ void main() {
           home: DeckDetailsScreen(deck: emptyDeck, store: store),
         ),
       );
+
+      await tester.pumpAndSettle();
 
       final button = tester.widget<FilledButton>(
         find.byKey(const ValueKey('start_study_button')),
@@ -160,6 +193,219 @@ void main() {
         find.text('Add at least one flashcard to start studying.'),
         findsOneWidget,
       );
+    });
+  });
+
+  // MILESTONE 3.3 — STUDY SESSION RATING
+  group('Study Session Rating', () {
+    final gotItButton = find.byKey(const ValueKey('got_it_button'));
+
+    final stillLearningButton = find.byKey(
+      const ValueKey('still_learning_button'),
+    );
+
+    // TEST 1
+    testWidgets('Ratings are disabled until the answer is visible', (
+      tester,
+    ) async {
+      await pumpStudyScreen(tester);
+
+      expect(tester.widget<FilledButton>(gotItButton).onPressed, isNull);
+
+      expect(
+        tester.widget<OutlinedButton>(stillLearningButton).onPressed,
+        isNull,
+      );
+
+      await tapControl(tester, 'toggle_answer_button');
+
+      expect(tester.widget<FilledButton>(gotItButton).onPressed, isNotNull);
+
+      expect(
+        tester.widget<OutlinedButton>(stillLearningButton).onPressed,
+        isNotNull,
+      );
+
+      await tapControl(tester, 'toggle_answer_button');
+
+      expect(tester.widget<FilledButton>(gotItButton).onPressed, isNull);
+
+      expect(
+        tester.widget<OutlinedButton>(stillLearningButton).onPressed,
+        isNull,
+      );
+    });
+
+    // TEST 2
+    testWidgets('Got It records outcome and advances the card', (tester) async {
+      await pumpStudyScreen(tester);
+
+      await tapControl(tester, 'toggle_answer_button');
+
+      await tapControl(tester, 'got_it_button');
+
+      expect(session.gotItCount, 1);
+      expect(session.reviewedCards, 1);
+      expect(session.currentCardNumber, 2);
+      expect(session.isAnswerVisible, isFalse);
+
+      expect(find.text('What is an alphabet?'), findsOneWidget);
+
+      expect(find.text('Card 2 of 2'), findsOneWidget);
+
+      expect(find.text('50% completed'), findsOneWidget);
+
+      final indicator = tester.widget<LinearProgressIndicator>(
+        find.byType(LinearProgressIndicator),
+      );
+
+      expect(indicator.value, 0.5);
+    });
+
+    // TEST 3
+    testWidgets('Still Learning records outcome and advances', (tester) async {
+      await pumpStudyScreen(tester);
+
+      await tapControl(tester, 'toggle_answer_button');
+
+      await tapControl(tester, 'still_learning_button');
+
+      expect(session.stillLearningCount, 1);
+      expect(session.gotItCount, 0);
+      expect(session.reviewedCards, 1);
+      expect(session.currentCardNumber, 2);
+
+      expect(session.results['card_001'], StudyResult.stillLearning);
+
+      expect(session.isAnswerVisible, isFalse);
+    });
+
+    // TEST 4
+    testWidgets('Duplicate button callbacks cannot rate another card', (
+      tester,
+    ) async {
+      await pumpStudyScreen(tester);
+
+      await tapControl(tester, 'toggle_answer_button');
+
+      final callback = tester.widget<FilledButton>(gotItButton).onPressed!;
+
+      // Simulate two rapid submissions.
+      callback();
+      callback();
+
+      await tester.pumpAndSettle();
+
+      expect(session.reviewedCards, 1);
+      expect(session.gotItCount, 1);
+      expect(session.currentCardNumber, 2);
+      expect(session.isAnswerVisible, isFalse);
+
+      expect(tester.takeException(), isNull);
+    });
+
+    // TEST 5
+    testWidgets('Complete a session with mixed ratings', (tester) async {
+      await pumpStudyScreen(tester);
+
+      await tapControl(tester, 'toggle_answer_button');
+
+      await tapControl(tester, 'got_it_button');
+
+      await tapControl(tester, 'toggle_answer_button');
+
+      await tapControl(tester, 'still_learning_button');
+
+      expect(session.isCompleted, isTrue);
+      expect(session.reviewedCards, 2);
+      expect(session.gotItCount, 1);
+      expect(session.stillLearningCount, 1);
+      expect(session.recallPercentage, 50.0);
+      expect(session.progress, 1.0);
+
+      expect(find.text('Session completed!'), findsOneWidget);
+
+      expect(find.text('100% completed'), findsOneWidget);
+
+      expect(gotItButton, findsNothing);
+      expect(stillLearningButton, findsNothing);
+    });
+
+    // TEST 6
+    testWidgets('Study Again resets the completed session', (tester) async {
+      await pumpStudyScreen(tester);
+
+      await tapControl(tester, 'toggle_answer_button');
+
+      await tapControl(tester, 'got_it_button');
+
+      await tapControl(tester, 'toggle_answer_button');
+
+      await tapControl(tester, 'still_learning_button');
+
+      await tapControl(tester, 'study_again_button');
+
+      expect(session.isCompleted, isFalse);
+      expect(session.currentCardNumber, 1);
+      expect(session.reviewedCards, 0);
+      expect(session.gotItCount, 0);
+      expect(session.stillLearningCount, 0);
+      expect(session.isAnswerVisible, isFalse);
+
+      expect(find.text('What is a DFA?'), findsOneWidget);
+
+      expect(find.text('0% completed'), findsOneWidget);
+    });
+
+    // TEST 7
+    testWidgets('Complete a single-card study session', (tester) async {
+      session = StudySessionController(
+        deckId: 'deck_001',
+        cards: [store.cardsForDeck('deck_001').first],
+      );
+
+      await pumpStudyScreen(tester);
+
+      await tapControl(tester, 'toggle_answer_button');
+
+      await tapControl(tester, 'got_it_button');
+
+      expect(session.isCompleted, isTrue);
+      expect(session.reviewedCards, 1);
+      expect(session.recallPercentage, 100.0);
+
+      expect(find.text('Session completed!'), findsOneWidget);
+    });
+
+    // TEST 8
+    testWidgets('Done returns the user to Deck Details', (tester) async {
+      await configureViewport(tester);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: DeckDetailsScreen(deck: store.decks.first, store: store),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+
+      await tapControl(tester, 'start_study_button');
+
+      await tapControl(tester, 'toggle_answer_button');
+
+      await tapControl(tester, 'got_it_button');
+
+      await tapControl(tester, 'toggle_answer_button');
+
+      await tapControl(tester, 'still_learning_button');
+
+      await tapControl(tester, 'finish_study_button');
+
+      expect(find.byType(DeckDetailsScreen), findsOneWidget);
+
+      expect(find.byType(StudySessionScreen), findsNothing);
+
+      expect(store.cardCountForDeck('deck_001'), 2);
     });
   });
 }
