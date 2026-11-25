@@ -3,8 +3,10 @@ import 'package:material_ui/material_ui.dart';
 import '../../domain/models/deck.dart';
 import '../../domain/models/flashcard.dart';
 import '../../data/mock/mock_study_store.dart';
+import '../../domain/services/study_session_controller.dart';
 import 'create_deck_screen.dart';
 import 'create_flashcard_screen.dart';
+import 'study_session_screen.dart';
 
 class DeckDetailsScreen extends StatefulWidget {
   final Deck deck;
@@ -200,6 +202,24 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen> {
     );
   }
 
+  // START STUDY SESSION
+  void _startStudy() {
+    final cards = flashcards;
+
+    if (cards.isEmpty) {
+      return;
+    }
+
+    final session = StudySessionController(deckId: deck.id, cards: cards);
+
+    Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (context) =>
+            StudySessionScreen(deckTitle: deck.title, session: session),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -281,7 +301,39 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen> {
             ),
 
             const SizedBox(height: 24),
+            // Start study button
+            FilledButton.icon(
+              key: const ValueKey('start_study_button'),
 
+              onPressed: flashcards.isEmpty ? null : _startStudy,
+
+              icon: const Icon(Icons.play_arrow),
+
+              label: const Text('Start Study'),
+
+              style: FilledButton.styleFrom(
+                backgroundColor: primaryColor,
+                foregroundColor: Colors.white,
+                minimumSize: const Size.fromHeight(54),
+
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+              ),
+            ),
+
+            if (flashcards.isEmpty) ...[
+              const SizedBox(height: 8),
+
+              const Text(
+                'Add at least one flashcard to start studying.',
+                textAlign: TextAlign.center,
+
+                style: TextStyle(color: Colors.black54, fontSize: 12),
+              ),
+            ],
+
+            const SizedBox(height: 24),
             const Text(
               'Flashcards',
               style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
