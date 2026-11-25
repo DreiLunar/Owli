@@ -7,10 +7,13 @@ class StudySessionScreen extends StatefulWidget {
   final String deckTitle;
   final StudySessionController session;
 
+  final void Function(Map<String, StudyResult> results)? onSessionCompleted;
+
   const StudySessionScreen({
     super.key,
     required this.deckTitle,
     required this.session,
+    this.onSessionCompleted,
   });
 
   @override
@@ -61,6 +64,10 @@ class _StudySessionScreenState extends State<StudySessionScreen> {
     setState(() {
       session.rateCurrentCard(cardId: cardId, result: result);
     });
+
+    if (session.isCompleted) {
+      widget.onSessionCompleted?.call(session.results);
+    }
 
     _scrollToTop();
   }
