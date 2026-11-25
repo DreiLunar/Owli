@@ -4,6 +4,7 @@ import '../../domain/models/deck.dart';
 import '../../domain/models/flashcard.dart';
 import '../../data/mock/mock_study_store.dart';
 import 'create_deck_screen.dart';
+import 'create_flashcard_screen.dart';
 
 class DeckDetailsScreen extends StatefulWidget {
   final Deck deck;
@@ -99,10 +100,45 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen> {
     Navigator.of(context).pop();
   }
 
+  // ADD FLASHCARD
+  Future<void> _addFlashcard() async {
+    final draft = await Navigator.of(context).push<FlashcardDraft>(
+      MaterialPageRoute(
+        builder: (context) => CreateFlashcardScreen(deckTitle: deck.title),
+      ),
+    );
+
+    if (!mounted || draft == null) {
+      return;
+    }
+
+    setState(() {
+      widget.store.createFlashcard(
+        deckId: deck.id,
+        front: draft.front,
+        back: draft.back,
+      );
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Flashcard added successfully!')),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: backgroundColor,
+
+      // Add flashcard button
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _addFlashcard,
+        backgroundColor: primaryColor,
+        foregroundColor: Colors.white,
+        icon: const Icon(Icons.add),
+        label: const Text('Add Flashcard'),
+      ),
+
       appBar: AppBar(
         title: const Text('Deck Details'),
         backgroundColor: backgroundColor,
@@ -120,9 +156,10 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen> {
           ),
         ],
       ),
+
       body: SafeArea(
         child: ListView(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 100),
           children: [
             // Deck information
             Container(

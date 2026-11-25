@@ -8,6 +8,7 @@ class MockStudyStore {
   final List<Flashcard> _flashcards = List<Flashcard>.of(mockFlashcards);
 
   int _nextDeckId = 1;
+  int _nextCardId = 1;
 
   List<Deck> get decks => List<Deck>.unmodifiable(_decks);
 
@@ -91,5 +92,43 @@ class MockStudyStore {
     _flashcards.removeWhere((card) => card.deckId == deckId);
 
     _decks.removeAt(index);
+  }
+
+  Flashcard createFlashcard({
+    required String deckId,
+    required String front,
+    required String back,
+  }) {
+    final cleanFront = front.trim();
+    final cleanBack = back.trim();
+
+    if (cleanFront.isEmpty) {
+      throw ArgumentError('Flashcard question cannot be empty.');
+    }
+
+    if (cleanBack.isEmpty) {
+      throw ArgumentError('Flashcard answer cannot be empty.');
+    }
+
+    final deckExists = _decks.any((deck) => deck.id == deckId);
+
+    if (!deckExists) {
+      throw StateError('Deck not found.');
+    }
+
+    final now = DateTime.now();
+
+    final flashcard = Flashcard(
+      id: 'mock_card_${_nextCardId++}',
+      deckId: deckId,
+      front: cleanFront,
+      back: cleanBack,
+      createdAt: now,
+      updatedAt: now,
+    );
+
+    _flashcards.add(flashcard);
+
+    return flashcard;
   }
 }

@@ -74,4 +74,130 @@ void main() {
       expect(store.totalCardCount, 6);
     });
   });
+
+  group('Flashcard Creation', () {
+    test('Create a flashcard in an existing deck', () {
+      final deck = store.decks.first;
+
+      final card = store.createFlashcard(
+        deckId: deck.id,
+        front: 'What is an NFA?',
+        back: 'A nondeterministic finite automaton.',
+      );
+
+      expect(card.deckId, deck.id);
+      expect(card.front, 'What is an NFA?');
+
+      expect(card.back, 'A nondeterministic finite automaton.');
+
+      expect(store.cardCountForDeck(deck.id), 3);
+      expect(store.totalCardCount, 7);
+    });
+
+    test('Create a flashcard in a new deck', () {
+      final deck = store.createDeck(title: 'Web Systems');
+
+      final card = store.createFlashcard(
+        deckId: deck.id,
+        front: 'What is HTML?',
+        back: 'HyperText Markup Language.',
+      );
+
+      expect(card.deckId, deck.id);
+      expect(store.cardCountForDeck(deck.id), 1);
+      expect(store.totalCardCount, 7);
+    });
+
+    test('Reject an empty question', () {
+      expect(
+        () => store.createFlashcard(
+          deckId: 'deck_001',
+          front: '   ',
+          back: 'Answer',
+        ),
+        throwsArgumentError,
+      );
+
+      expect(store.totalCardCount, 6);
+    });
+
+    test('Reject an empty answer', () {
+      expect(
+        () => store.createFlashcard(
+          deckId: 'deck_001',
+          front: 'Question',
+          back: '   ',
+        ),
+        throwsArgumentError,
+      );
+
+      expect(store.totalCardCount, 6);
+    });
+
+    test('Reject a nonexistent deck', () {
+      expect(
+        () => store.createFlashcard(
+          deckId: 'invalid_deck',
+          front: 'Question',
+          back: 'Answer',
+        ),
+        throwsStateError,
+      );
+
+      expect(store.totalCardCount, 6);
+    });
+
+    test('Generate unique flashcard IDs', () {
+      final first = store.createFlashcard(
+        deckId: 'deck_001',
+        front: 'Question 1',
+        back: 'Answer 1',
+      );
+
+      final second = store.createFlashcard(
+        deckId: 'deck_001',
+        front: 'Question 2',
+        back: 'Answer 2',
+      );
+
+      expect(first.id, isNot(second.id));
+    });
+
+    test('Trim question and answer whitespace', () {
+      final card = store.createFlashcard(
+        deckId: 'deck_001',
+        front: '  Question  ',
+        back: '  Answer  ',
+      );
+
+      expect(card.front, 'Question');
+      expect(card.back, 'Answer');
+    });
+
+    test('Other decks remain unaffected', () {
+      store.createFlashcard(
+        deckId: 'deck_001',
+        front: 'Question',
+        back: 'Answer',
+      );
+
+      expect(store.cardCountForDeck('deck_001'), 3);
+      expect(store.cardCountForDeck('deck_002'), 2);
+      expect(store.cardCountForDeck('deck_003'), 2);
+    });
+
+    test('Deleting a deck removes newly added cards', () {
+      store.createFlashcard(
+        deckId: 'deck_001',
+        front: 'Question',
+        back: 'Answer',
+      );
+
+      store.deleteDeck('deck_001');
+
+      expect(store.cardsForDeck('deck_001'), isEmpty);
+      expect(store.totalCardCount, 4);
+      expect(store.decks.length, 2);
+    });
+  });
 }
