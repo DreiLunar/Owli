@@ -48,5 +48,9 @@ firestore-debug.log
 # Debugging artifacts
 app.*.symbols
 app.*.map.json
-"android/app/google-services.json" 
-"lib/firebase_options.dart" 
+android/app/google-services.json 
+lib/firebase_options.dart 
+
+# Local Firebase configuration
+/android/app/google-services.json
+/lib/firebase_options.dart
