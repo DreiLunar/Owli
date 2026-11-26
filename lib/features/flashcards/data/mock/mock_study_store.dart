@@ -28,18 +28,28 @@ class MockStudyStore {
     return _flashcards.where((card) => card.deckId == deckId).length;
   }
 
-  Deck createDeck({required String title, String description = ''}) {
+  Deck createDeck({
+    required String title,
+    String description = '',
+    String ownerId = 'mock_user',
+    String? subjectId,
+  }) {
     final cleanTitle = title.trim();
 
     if (cleanTitle.isEmpty) {
       throw ArgumentError('Deck title cannot be empty.');
     }
 
+    if (ownerId.trim().isEmpty) {
+      throw ArgumentError('Owner ID cannot be empty.');
+    }
+
     final now = DateTime.now();
 
     final deck = Deck(
       id: 'mock_deck_${_nextDeckId++}',
-      ownerId: 'mock_user',
+      ownerId: ownerId.trim(),
+      subjectId: subjectId,
       title: cleanTitle,
       description: description.trim(),
       createdAt: now,
