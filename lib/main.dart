@@ -3,8 +3,9 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 
+import 'core/navigation/app_shell.dart';
+import 'core/theme/app_theme.dart';
 import 'features/auth/presentation/sign_in_screen.dart';
-import 'features/flashcards/presentation/create_deck_screen.dart';
 import 'firebase_options.dart';
 
 Future<void> main() async {
@@ -22,7 +23,10 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Owli',
-      theme: ThemeData(colorScheme: .fromSeed(seedColor: Colors.deepPurple)),
+      debugShowCheckedModeBanner: false,
+      theme: AppTheme.light,
+      darkTheme: AppTheme.dark,
+      themeMode: ThemeMode.system,
       home: StreamBuilder<User?>(
         stream: authChanges ?? FirebaseAuth.instance.authStateChanges(),
         builder: (context, snapshot) {
@@ -41,7 +45,7 @@ class MyApp extends StatelessWidget {
             );
           }
           if (snapshot.data == null) return const SignInScreen();
-          return const CreateDeckScreen(subjectId: 'test-subject');
+          return const AppShell();
         },
       ),
     );
