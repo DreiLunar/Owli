@@ -2,8 +2,12 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // ---------- helpers ----------
-    function signedIn() { return request.auth != null; }
+    // ================================================
+    // HELPERS
+    // ================================================
+    function signedIn() {
+      return request.auth != null;
+    }
 
     function isOwner(data) {
       return signedIn() && data.ownerId == request.auth.uid;
@@ -11,83 +15,6 @@ service cloud.firestore {
 
     function ownerUnchanged() {
       return request.resource.data.ownerId == resource.data.ownerId;
-    }
-
-    function titleOk(max) {
-      return request.resource.data.title is string
-        && request.resource.data.title.size() > 0
-        && request.resource.data.title.size() <= max;
-    }
-
-    // The subject referenced by a new/updated deck or note must belong to the caller.
-    function ownsSubject(subjectId) {
-      return get(/databases/$(database)/documents/subjects/$(subjectId)).data.ownerId
-        == request.auth.uid;
-    }
-
-    function deckOwner(deckId) {
-      return signedIn()
-        && get(/databases/$(database)/documents/decks/$(deckId)).data.ownerId
-          == request.auth.uid;
-    }
-
-    // ---------- users ----------
-    match /users/{uid} {
-      allow read, update: if signedIn() && request.auth.uid == uid;
-      allow create: if signedIn() && request.auth.uid == uid
-        && request.resource.data.name is string
-        && request.resource.data.email is string;
-      allow delete: if false;
-    }
-
-    // ---------- subjects ----------
-    match /subjects/{id} {
-      allow read, delete: if isOwner(resource.data);
-      allow create: if isOwner(request.resource.data)
-        && titleOk(60)
-        && request.resource.data.color is int;
-      allow update: if isOwner(resource.data) && ownerUnchanged()
-        && titleOk(60)
-        && request.resource.data.color is int;
-    }
-
-    // ---------- notes ----------
-    match /notes/{id} {
-      allow read, delete: if isOwner(resource.data);
-      allow create: if isOwner(request.resource.data)
-        && titleOk(200)
-        && request.resource.data.content is string
-        && request.resource.data.subjectId is string
-        && ownsSubject(request.resource.data.subjectId);
-      allow update: if isOwner(resource.data) && ownerUnchanged()
-        && titleOk(200)
-        && request.resource.data.content is string
-        && request.resource.data.subjectId is string
-        && ownsSubject(request.resource.data.subjectId);
-    }
-
-    // ---------- decks and cards ----------
-    match /decks/{deckId} {
-      allow read, delete: if isOwner(resource.data);
-      allow create: if isOwner(request.resource.data)
-        && titleOk(100)
-        && request.resource.data.subjectId is string
-        && ownsSubject(request.resource.data.subjectId);
-      allow update: if isOwner(resource.data) && ownerUnchanged()
-        && titleOk(100)
-        && request.resource.data.subjectId is string
-        && ownsSubject(request.resource.data.subjectId);
-
-      match /cards/{cardId} {
-        allow read, delete: if deckOwner(deckId);
-        allow create, update: if deckOwner(deckId)
-          && request.resource.data.front is string
-          && request.resource.data.front.size() > 0
-          && request.resource.data.back is string
-          && request.resource.data.back.size() > 0;
-      }
-    function signedIn() {
-      return request.auth != null;
     }
 
     function validId(value) {
@@ -105,64 +32,45 @@ service cloud.firestore {
       return data.get('deleting', false) == true;
     }
 
-    function ownsDeck(deckId) {
-      let deck = get(
-        /databases/$(database)/documents/decks/$(deckId)
-      ).data;
+    // Not used yet. Add "&& ownsSubject(...)" to the notes and decks
+    // create/update rules once subjects are implemented.
+    function ownsSubject(subjectId) {
+      return get(/databases/$(database)/documents/subjects/$(subjectId)).data.ownerId
+        == request.auth.uid;
+    }
 
-      return signedIn()
-        && deck.ownerId == request.auth.uid;
+    function ownsDeck(deckId) {
+      let deck = get(/databases/$(database)/documents/decks/$(deckId)).data;
+      return signedIn() && deck.ownerId == request.auth.uid;
     }
 
     function activeDeckAfter(deckId) {
-      let deck = getAfter(
-        /databases/$(database)/documents/decks/$(deckId)
-      ).data;
-
+      let deck = getAfter(/databases/$(database)/documents/decks/$(deckId)).data;
       return signedIn()
         && deck.ownerId == request.auth.uid
         && !isDeleting(deck);
     }
 
     function progressRemovedAfter(deckId, cardId) {
-      let id = request.auth.uid + '~'
-        + deckId + '~' + cardId;
-
-      return !existsAfter(
-        /databases/$(database)/documents/progress/$(id)
-      );
+      let id = request.auth.uid + '~' + deckId + '~' + cardId;
+      return !existsAfter(/databases/$(database)/documents/progress/$(id));
     }
 
     function canDeleteCard(deckId, cardId) {
-      let deck = get(
-        /databases/$(database)/documents/decks/$(deckId)
-      ).data;
-
+      let deck = get(/databases/$(database)/documents/decks/$(deckId)).data;
       return signedIn()
         && deck.ownerId == request.auth.uid
-        && (
-          isDeleting(deck)
-          || progressRemovedAfter(deckId, cardId)
-        );
+        && (isDeleting(deck) || progressRemovedAfter(deckId, cardId));
     }
 
     function validDeck(data) {
       return data.keys().hasAll([
-          'ownerId',
-          'subjectId',
-          'title',
-          'description',
-          'createdAt',
-          'updatedAt'
+          'ownerId', 'subjectId', 'title', 'description',
+          'createdAt', 'updatedAt'
         ])
         && data.keys().hasOnly([
-          'ownerId',
-          'subjectId',
-          'title',
-          'description',
-          'createdAt',
-          'updatedAt',
-          'deleting'
+          'ownerId', 'subjectId', 'title', 'description',
+          'createdAt', 'updatedAt', 'deleting'
         ])
         && validId(data.ownerId)
         && validId(data.subjectId)
@@ -176,20 +84,12 @@ service cloud.firestore {
 
     function validCard(data, deckId) {
       return data.keys().hasAll([
-          'deckId',
-          'front',
-          'back',
-          'sourceNoteId',
-          'createdAt',
-          'updatedAt'
+          'deckId', 'front', 'back', 'sourceNoteId',
+          'createdAt', 'updatedAt'
         ])
         && data.keys().hasOnly([
-          'deckId',
-          'front',
-          'back',
-          'sourceNoteId',
-          'createdAt',
-          'updatedAt'
+          'deckId', 'front', 'back', 'sourceNoteId',
+          'createdAt', 'updatedAt'
         ])
         && data.deckId == deckId
         && validText(data.front, 10000)
@@ -200,65 +100,80 @@ service cloud.firestore {
     }
 
     // ================================================
-    // USER PROFILES — EXISTING BEHAVIOR PRESERVED
+    // USERS
     // ================================================
-
     match /users/{userId} {
       allow read, create, update, delete:
-        if signedIn()
-        && request.auth.uid == userId;
+        if signedIn() && request.auth.uid == userId;
+    }
+
+    // ================================================
+    // SUBJECTS
+    // ================================================
+    match /subjects/{id} {
+      allow read, delete: if isOwner(resource.data);
+
+      allow create: if isOwner(request.resource.data)
+        && validText(request.resource.data.title, 60)
+        && request.resource.data.color is int;
+
+      allow update: if isOwner(resource.data)
+        && ownerUnchanged()
+        && validText(request.resource.data.title, 60)
+        && request.resource.data.color is int;
+    }
+
+    // ================================================
+    // NOTES
+    // ================================================
+    match /notes/{id} {
+      allow read, delete: if isOwner(resource.data);
+
+      allow create: if isOwner(request.resource.data)
+        && validText(request.resource.data.title, 200)
+        && request.resource.data.content is string
+        && request.resource.data.subjectId is string;
+
+      allow update: if isOwner(resource.data)
+        && ownerUnchanged()
+        && validText(request.resource.data.title, 200)
+        && request.resource.data.content is string
+        && request.resource.data.subjectId is string;
     }
 
     // ================================================
     // DECKS
     // ================================================
-
     match /decks/{deckId} {
       allow read:
-        if signedIn()
-        && resource.data.ownerId == request.auth.uid;
+        if signedIn() && resource.data.ownerId == request.auth.uid;
 
       allow create:
         if signedIn()
         && validId(deckId)
         && validDeck(request.resource.data)
-        && request.resource.data.ownerId
-          == request.auth.uid
+        && request.resource.data.ownerId == request.auth.uid
         && !isDeleting(request.resource.data)
-        && request.resource.data.createdAt
-          == request.time
-        && request.resource.data.updatedAt
-          == request.time;
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time;
 
       allow update:
         if signedIn()
         && resource.data.ownerId == request.auth.uid
         && !isDeleting(resource.data)
         && validDeck(request.resource.data)
-        && request.resource.data.updatedAt
-          == request.time
+        && request.resource.data.updatedAt == request.time
         && (
           (
             !isDeleting(request.resource.data)
-            && request.resource.data
-              .diff(resource.data)
-              .affectedKeys()
-              .hasOnly([
-                'title',
-                'description',
-                'updatedAt'
-              ])
+            && request.resource.data.diff(resource.data).affectedKeys()
+                 .hasOnly(['title', 'description', 'updatedAt'])
           )
           ||
           (
             isDeleting(request.resource.data)
-            && request.resource.data
-              .diff(resource.data)
-              .affectedKeys()
-              .hasOnly([
-                'deleting',
-                'updatedAt'
-              ])
+            && request.resource.data.diff(resource.data).affectedKeys()
+                 .hasOnly(['deleting', 'updatedAt'])
           )
         );
 
@@ -267,55 +182,38 @@ service cloud.firestore {
         && resource.data.ownerId == request.auth.uid
         && isDeleting(resource.data);
 
-      // ==============================================
-      // NESTED FLASHCARDS
-      // ==============================================
-
+      // ---------- cards ----------
       match /cards/{cardId} {
-        allow read:
-          if ownsDeck(deckId);
+        allow read: if ownsDeck(deckId);
 
         allow create:
           if activeDeckAfter(deckId)
           && validId(cardId)
           && validCard(request.resource.data, deckId)
-          && request.resource.data.createdAt
-            == request.time
-          && request.resource.data.updatedAt
-            == request.time;
+          && request.resource.data.createdAt == request.time
+          && request.resource.data.updatedAt == request.time;
 
         allow update:
           if activeDeckAfter(deckId)
           && validCard(request.resource.data, deckId)
-          && request.resource.data
-            .diff(resource.data)
-            .affectedKeys()
-            .hasOnly([
-              'front',
-              'back',
-              'updatedAt'
-            ])
-          && request.resource.data.updatedAt
-            == request.time
+          && request.resource.data.diff(resource.data).affectedKeys()
+               .hasOnly(['front', 'back', 'updatedAt'])
+          && request.resource.data.updatedAt == request.time
           && (
             (
-              request.resource.data.front
-                == resource.data.front
-              && request.resource.data.back
-                == resource.data.back
+              request.resource.data.front == resource.data.front
+              && request.resource.data.back == resource.data.back
             )
             || progressRemovedAfter(deckId, cardId)
           );
 
-        allow delete:
-          if canDeleteCard(deckId, cardId);
+        allow delete: if canDeleteCard(deckId, cardId);
       }
     }
 
     // ================================================
-    // STUDY PROGRESS
+    // PROGRESS
     // ================================================
-
     match /progress/{progressId} {
 
       function validProgress() {
@@ -323,89 +221,52 @@ service cloud.firestore {
 
         return signedIn()
           && data.keys().hasAll([
-            'userId',
-            'deckId',
-            'cardId',
-            'lastResult',
-            'lastReviewedAt',
-            'nextReviewAt'
+            'userId', 'deckId', 'cardId',
+            'lastResult', 'lastReviewedAt', 'nextReviewAt'
           ])
           && data.keys().hasOnly([
-            'userId',
-            'deckId',
-            'cardId',
-            'lastResult',
-            'lastReviewedAt',
-            'nextReviewAt'
+            'userId', 'deckId', 'cardId',
+            'lastResult', 'lastReviewedAt', 'nextReviewAt'
           ])
           && data.userId == request.auth.uid
           && validId(data.userId)
           && validId(data.deckId)
           && validId(data.cardId)
-          && progressId == (
-            data.userId + '~'
-            + data.deckId + '~'
-            + data.cardId
-          )
-          && data.lastResult in [
-            'gotIt',
-            'stillLearning'
-          ]
+          && progressId == (data.userId + '~' + data.deckId + '~' + data.cardId)
+          && data.lastResult in ['gotIt', 'stillLearning']
           && data.lastReviewedAt == request.time
           && data.nextReviewAt == null
           && activeDeckAfter(data.deckId)
           && getAfter(
-            /databases/$(database)/documents/decks/$(data.deckId)/cards/$(data.cardId)
-          ).data.deckId == data.deckId;
+               /databases/$(database)/documents/decks/$(data.deckId)/cards/$(data.cardId)
+             ).data.deckId == data.deckId;
       }
 
       allow read:
-        if signedIn()
-        && resource.data.userId == request.auth.uid;
+        if signedIn() && resource.data.userId == request.auth.uid;
 
-      allow create:
-        if validProgress();
+      allow create: if validProgress();
 
       allow update:
         if validProgress()
         && resource.data.userId == request.auth.uid
-        && resource.data.userId
-          == request.resource.data.userId
-        && resource.data.deckId
-          == request.resource.data.deckId
-        && resource.data.cardId
-          == request.resource.data.cardId;
+        && resource.data.userId == request.resource.data.userId
+        && resource.data.deckId == request.resource.data.deckId
+        && resource.data.cardId == request.resource.data.cardId;
 
       allow delete:
         if signedIn()
         && (
-          (
-            resource != null
-            && resource.data.userId == request.auth.uid
-          )
+          (resource != null && resource.data.userId == request.auth.uid)
           ||
           (
             resource == null
             && validId(request.auth.uid)
             && progressId.matches(
-              request.auth.uid
-              + '~[A-Za-z0-9_-]{1,128}'
-              + '~[A-Za-z0-9_-]{1,128}'
-            )
+                 request.auth.uid + '~[A-Za-z0-9_-]{1,128}~[A-Za-z0-9_-]{1,128}'
+               )
           )
         );
     }
-
-    // ---------- progress ----------
-    match /progress/{progressId} {
-      allow read, delete: if signedIn() && resource.data.userId == request.auth.uid;
-      allow create, update: if signedIn()
-        && request.resource.data.userId == request.auth.uid
-        && request.resource.data.cardId is string
-        && request.resource.data.deckId is string
-        && progressId == request.auth.uid + '_' + request.resource.data.cardId;
-    }
-
-   
   }
 }
