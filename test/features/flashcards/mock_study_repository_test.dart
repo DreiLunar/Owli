@@ -380,5 +380,44 @@ void main() {
 
       expect(await repository.fetchProgress(deckId: 'deck_001'), isEmpty);
     });
+
+    test('Rejects stale study snapshots atomically', () async {
+      final cards = await repository.fetchFlashcards(deckId: 'deck_001');
+
+      final original = {for (final card in cards) card.id: card};
+
+      await repository.updateFlashcard(
+        deckId: 'deck_001',
+        cardId: 'card_001',
+        front: 'Updated question',
+        back: 'Updated answer',
+      );
+
+      await expectLater(
+        repository.saveSessionResults(
+          deckId: 'deck_001',
+          results: {
+            'card_001': StudyResult.gotIt,
+            'card_002': StudyResult.gotIt,
+          },
+          expectedCards: original,
+        ),
+        throwsStateError,
+      );
+
+      expect(await repository.fetchProgress(deckId: 'deck_001'), isEmpty);
+    });
+
+    test('Accepts unchanged study snapshots', () async {
+      final cards = await repository.fetchFlashcards(deckId: 'deck_001');
+
+      await repository.saveSessionResults(
+        deckId: 'deck_001',
+        results: {for (final card in cards) card.id: StudyResult.gotIt},
+        expectedCards: {for (final card in cards) card.id: card},
+      );
+
+      expect(await repository.fetchProgress(deckId: 'deck_001'), hasLength(2));
+    });
   });
 }
