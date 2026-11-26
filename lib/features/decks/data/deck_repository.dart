@@ -4,22 +4,34 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../../flashcards/data/mappers/firestore_study_mapper.dart';
 import '../../flashcards/domain/models/deck.dart';
 import '../../flashcards/domain/models/flashcard.dart';
+import '../../flashcards/data/mappers/study_progress_key.dart';
+import '../../flashcards/domain/models/study_progress.dart';
 
 class DeckRepository {
   final FirebaseFirestore _db;
   final FirebaseAuth _auth;
+  final String? _scopedUserId;
 
-  DeckRepository({FirebaseFirestore? firestore, FirebaseAuth? auth})
-    : _db = firestore ?? FirebaseFirestore.instance,
-      _auth = auth ?? FirebaseAuth.instance;
+  DeckRepository({
+    FirebaseFirestore? firestore,
+    FirebaseAuth? auth,
+    String? scopedUserId,
+  }) : _db = firestore ?? FirebaseFirestore.instance,
+       _auth = auth ?? FirebaseAuth.instance,
+       _scopedUserId = scopedUserId;
 
   static const _serverOnly = GetOptions(source: Source.server);
+  static const maxSessionResults = 10;
 
   String get _uid {
     final user = _auth.currentUser;
 
     if (user == null) {
       throw StateError('Authentication required.');
+    }
+
+    if (_scopedUserId != null && user.uid != _scopedUserId) {
+      throw StateError('Repository belongs to a different user.');
     }
 
     return user.uid;
@@ -347,5 +359,158 @@ class DeckRepository {
     batch.delete(card.reference);
 
     await batch.commit();
+  }
+
+  Future<List<StudyProgress>> fetchProgress({required String deckId}) async {
+    final uid = _uid;
+
+    await _requireOwnedDeck(deckId, uid);
+
+    final snapshot = await _progressQuery(
+      uid: uid,
+      deckId: deckId,
+    ).get(_serverOnly);
+
+    _requireSameUser(uid);
+
+    final records = <StudyProgress>[];
+
+    for (final document in snapshot.docs) {
+      if (document.metadata.hasPendingWrites) {
+        throw StateError('Study results are awaiting confirmation.');
+      }
+
+      final progress = FirestoreStudyMapper.progressFromMap(
+        expectedUserId: uid,
+        expectedDeckId: deckId,
+        data: document.data(),
+      );
+
+      final expectedId = StudyProgressKey.build(
+        userId: uid,
+        deckId: deckId,
+        cardId: progress.cardId,
+      );
+
+      if (document.id != expectedId) {
+        throw const FormatException('Invalid progress document identity.');
+      }
+
+      records.add(progress);
+    }
+
+    records.sort((a, b) => a.cardId.compareTo(b.cardId));
+
+    return List<StudyProgress>.unmodifiable(records);
+  }
+
+  Future<void> saveSessionResults({
+    required String deckId,
+    required Map<String, StudyResult> results,
+  }) async {
+    final uid = _uid;
+
+    if (results.isEmpty) {
+      throw ArgumentError('Session results cannot be empty.');
+    }
+
+    if (results.length > maxSessionResults) {
+      throw ArgumentError(
+        'A session can save at most '
+        '$maxSessionResults flashcard results.',
+      );
+    }
+
+    final sessionResults = Map<String, StudyResult>.unmodifiable(results);
+
+    final deckRef = _deckRef(deckId);
+
+    // Validate every identity before starting a write.
+    final progressIds = <String, String>{};
+
+    for (final cardId in sessionResults.keys) {
+      _documentId(cardId);
+
+      progressIds[cardId] = StudyProgressKey.build(
+        userId: uid,
+        deckId: deckId,
+        cardId: cardId,
+      );
+    }
+
+    await _db.runTransaction<void>((transaction) async {
+      _requireSameUser(uid);
+
+      final deckSnapshot = await transaction.get(deckRef);
+
+      _requireSameUser(uid);
+
+      if (!deckSnapshot.exists || deckSnapshot.data()?['ownerId'] != uid) {
+        throw StateError('Deck not found or access denied.');
+      }
+
+      // All transaction reads happen before any writes.
+      for (final cardId in sessionResults.keys) {
+        final cardRef = deckRef.collection('cards').doc(cardId);
+
+        final cardSnapshot = await transaction.get(cardRef);
+
+        _requireSameUser(uid);
+
+        if (!cardSnapshot.exists || cardSnapshot.data()?['deckId'] != deckId) {
+          throw StateError(
+            'A flashcard is missing or belongs '
+            'to another deck.',
+          );
+        }
+      }
+
+      _requireSameUser(uid);
+
+      for (final entry in sessionResults.entries) {
+        final progressRef = _db
+            .collection('progress')
+            .doc(progressIds[entry.key]!);
+
+        transaction.set(progressRef, {
+          'userId': uid,
+          'deckId': deckId,
+          'cardId': entry.key,
+
+          'lastResult': FirestoreStudyMapper.encodeStudyResult(entry.value),
+
+          'lastReviewedAt': FieldValue.serverTimestamp(),
+
+          'nextReviewAt': null,
+        });
+      }
+    });
+  }
+
+  Future<List<Flashcard>> fetchCardsNeedingReview({
+    required String deckId,
+  }) async {
+    final uid = _uid;
+
+    final progress = await fetchProgress(deckId: deckId);
+
+    _requireSameUser(uid);
+
+    final reviewIds = progress
+        .where((item) => item.lastResult == StudyResult.stillLearning)
+        .map((item) => item.cardId)
+        .toSet();
+
+    if (reviewIds.isEmpty) {
+      return const <Flashcard>[];
+    }
+
+    final cards = await fetchFlashcards(deckId: deckId);
+
+    _requireSameUser(uid);
+
+    return List<Flashcard>.unmodifiable(
+      cards.where((card) => reviewIds.contains(card.id)),
+    );
   }
 }
