@@ -408,4 +408,166 @@ void main() {
       expect(store.cardCountForDeck('deck_001'), 2);
     });
   });
+
+  group('Study Progress Integration', () {
+    Future<void> openDeck(WidgetTester tester) async {
+      await configureViewport(tester);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: DeckDetailsScreen(deck: store.decks.first, store: store),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+    }
+
+    Future<void> completeMixedSession(WidgetTester tester) async {
+      await tapControl(tester, 'start_study_button');
+
+      await tapControl(tester, 'toggle_answer_button');
+      await tapControl(tester, 'got_it_button');
+
+      await tapControl(tester, 'toggle_answer_button');
+      await tapControl(tester, 'still_learning_button');
+    }
+
+    testWidgets('Completed results are saved before pressing Done', (
+      tester,
+    ) async {
+      await openDeck(tester);
+      await completeMixedSession(tester);
+
+      final progress = store.progressForDeck(
+        userId: 'mock_user',
+        deckId: 'deck_001',
+      );
+
+      expect(progress.length, 2);
+
+      expect(
+        store
+            .progressForCard(
+              userId: 'mock_user',
+              deckId: 'deck_001',
+              cardId: 'card_001',
+            )!
+            .lastResult,
+        StudyResult.gotIt,
+      );
+
+      await tapControl(tester, 'finish_study_button');
+
+      expect(find.byType(DeckDetailsScreen), findsOneWidget);
+
+      expect(
+        tester.widget<Text>(find.byKey(const ValueKey('progress_Got It'))).data,
+        '1',
+      );
+    });
+
+    testWidgets('Targeted review updates only Still Learning cards', (
+      tester,
+    ) async {
+      await openDeck(tester);
+      await completeMixedSession(tester);
+
+      await tapControl(tester, 'finish_study_button');
+
+      await tapControl(tester, 'review_still_learning_button');
+
+      final screen = tester.widget<StudySessionScreen>(
+        find.byType(StudySessionScreen),
+      );
+
+      expect(screen.session.totalCards, 1);
+      expect(screen.session.currentCard!.id, 'card_002');
+
+      await tapControl(tester, 'toggle_answer_button');
+      await tapControl(tester, 'got_it_button');
+      await tapControl(tester, 'finish_study_button');
+
+      expect(
+        store.cardsNeedingReview(userId: 'mock_user', deckId: 'deck_001'),
+        isEmpty,
+      );
+
+      final reviewButton = tester.widget<OutlinedButton>(
+        find.byKey(const ValueKey('review_still_learning_button')),
+      );
+
+      expect(reviewButton.onPressed, isNull);
+
+      expect(
+        store.progressForDeck(userId: 'mock_user', deckId: 'deck_001').length,
+        2,
+      );
+    });
+
+    testWidgets('Incomplete session does not save progress', (tester) async {
+      await openDeck(tester);
+
+      await tapControl(tester, 'start_study_button');
+
+      await tapControl(tester, 'toggle_answer_button');
+      await tapControl(tester, 'got_it_button');
+
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+
+      expect(
+        store.progressForDeck(userId: 'mock_user', deckId: 'deck_001'),
+        isEmpty,
+      );
+    });
+
+    testWidgets('Study Again preserves previously saved progress', (
+      tester,
+    ) async {
+      await openDeck(tester);
+      await completeMixedSession(tester);
+
+      await tapControl(tester, 'study_again_button');
+
+      expect(
+        store.progressForDeck(userId: 'mock_user', deckId: 'deck_001').length,
+        2,
+      );
+
+      final screen = tester.widget<StudySessionScreen>(
+        find.byType(StudySessionScreen),
+      );
+
+      expect(screen.session.reviewedCards, 0);
+      expect(screen.session.isCompleted, isFalse);
+
+      await tapControl(tester, 'toggle_answer_button');
+      await tapControl(tester, 'still_learning_button');
+
+      await tapControl(tester, 'toggle_answer_button');
+      await tapControl(tester, 'got_it_button');
+
+      expect(
+        store
+            .progressForCard(
+              userId: 'mock_user',
+              deckId: 'deck_001',
+              cardId: 'card_001',
+            )!
+            .lastResult,
+        StudyResult.stillLearning,
+      );
+
+      expect(
+        store
+            .progressForCard(
+              userId: 'mock_user',
+              deckId: 'deck_001',
+              cardId: 'card_002',
+            )!
+            .lastResult,
+        StudyResult.gotIt,
+      );
+    });
+  });
 }
