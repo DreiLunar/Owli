@@ -18,24 +18,17 @@ class MockStudyRepository implements StudyRepository {
     }
   }
 
-  // ==================================================
   // OWNERSHIP VALIDATION
-  // ==================================================
-
   Deck _requireOwnedDeck(String deckId) {
     for (final deck in _store.decks) {
       if (deck.id == deckId && deck.ownerId == userId) {
         return deck;
       }
     }
-
     throw StateError('Deck not found or access denied.');
   }
 
-  // ==================================================
   // DECK MANAGEMENT
-  // ==================================================
-
   @override
   Future<List<Deck>> fetchDecks() async {
     return List<Deck>.unmodifiable(
@@ -50,11 +43,9 @@ class MockStudyRepository implements StudyRepository {
     String description = '',
   }) async {
     final cleanSubjectId = subjectId.trim();
-
     if (cleanSubjectId.isEmpty) {
       throw ArgumentError('Subject ID cannot be empty.');
     }
-
     _store.createDeck(
       title: title,
       description: description,
@@ -70,25 +61,19 @@ class MockStudyRepository implements StudyRepository {
     String description = '',
   }) async {
     _requireOwnedDeck(deckId);
-
     _store.updateDeck(deckId: deckId, title: title, description: description);
   }
 
   @override
   Future<void> deleteDeck(String deckId) async {
     _requireOwnedDeck(deckId);
-
     _store.deleteDeck(deckId);
   }
 
-  // ==================================================
   // FLASHCARD MANAGEMENT
-  // ==================================================
-
   @override
   Future<List<Flashcard>> fetchFlashcards({required String deckId}) async {
     _requireOwnedDeck(deckId);
-
     return _store.cardsForDeck(deckId);
   }
 
@@ -99,7 +84,6 @@ class MockStudyRepository implements StudyRepository {
     required String back,
   }) async {
     _requireOwnedDeck(deckId);
-
     _store.createFlashcard(deckId: deckId, front: front, back: back);
   }
 
@@ -111,7 +95,6 @@ class MockStudyRepository implements StudyRepository {
     required String back,
   }) async {
     _requireOwnedDeck(deckId);
-
     _store.updateFlashcard(
       deckId: deckId,
       cardId: cardId,
@@ -126,18 +109,13 @@ class MockStudyRepository implements StudyRepository {
     required String cardId,
   }) async {
     _requireOwnedDeck(deckId);
-
     _store.deleteFlashcard(deckId: deckId, cardId: cardId);
   }
 
-  // ==================================================
   // STUDY PROGRESS
-  // ==================================================
-
   @override
   Future<List<StudyProgress>> fetchProgress({required String deckId}) async {
     _requireOwnedDeck(deckId);
-
     return _store.progressForDeck(userId: userId, deckId: deckId);
   }
 
@@ -145,8 +123,33 @@ class MockStudyRepository implements StudyRepository {
   Future<void> saveSessionResults({
     required String deckId,
     required Map<String, StudyResult> results,
+    Map<String, Flashcard>? expectedCards,
   }) async {
     _requireOwnedDeck(deckId);
+
+    if (expectedCards != null) {
+      if (expectedCards.length != results.length) {
+        throw ArgumentError('Session snapshot mismatch.');
+      }
+
+      final currentCards = {
+        for (final card in _store.cardsForDeck(deckId)) card.id: card,
+      };
+
+      for (final cardId in results.keys) {
+        final expected = expectedCards[cardId];
+        final current = currentCards[cardId];
+
+        if (expected == null ||
+            expected.id != cardId ||
+            expected.deckId != deckId ||
+            current == null ||
+            current.front != expected.front ||
+            current.back != expected.back) {
+          throw StateError('Flashcard content changed during study.');
+        }
+      }
+    }
 
     _store.saveSessionResults(userId: userId, deckId: deckId, results: results);
   }
@@ -156,7 +159,6 @@ class MockStudyRepository implements StudyRepository {
     required String deckId,
   }) async {
     _requireOwnedDeck(deckId);
-
     return _store.cardsNeedingReview(userId: userId, deckId: deckId);
   }
 }

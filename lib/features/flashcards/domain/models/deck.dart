@@ -6,6 +6,7 @@ class Deck {
   final String description;
   final DateTime createdAt;
   final DateTime updatedAt;
+  final bool isDeleting;
 
   const Deck({
     required this.id,
@@ -15,5 +16,6 @@ class Deck {
     this.description = '',
     required this.createdAt,
     required this.updatedAt,
+    this.isDeleting = false,
   });
 }
