@@ -1,0 +1,8 @@
+{
+  "name": "owli-study-rules-tests",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test study.rules.test.mjs"
+  }
+}
