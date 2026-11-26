@@ -1,6 +1,5 @@
 import 'package:material_ui/material_ui.dart';
 
-import '../../data/mock/mock_study_store.dart';
 import '../../data/repositories/mock_study_repository.dart';
 import '../../domain/models/deck.dart';
 import '../../domain/repositories/study_repository.dart';
@@ -24,7 +23,7 @@ class DeckLibraryScreen extends StatefulWidget {
     super.key,
     required StudyRepository this.repository,
     required String this.subjectId,
-    required Widget Function(BuildContext, Deck) this.detailsBuilder,
+    this.detailsBuilder,
   });
 
   @override
@@ -60,20 +59,14 @@ class _DeckLibraryScreenState extends State<DeckLibraryScreen> {
   void initState() {
     super.initState();
 
-    if (widget.repository != null) {
-      _repository = widget.repository!;
-      _subjectId = widget.subjectId!;
-      _detailsBuilder = widget.detailsBuilder!;
-    } else {
-      final store = MockStudyStore();
-
-      _repository = MockStudyRepository(store: store);
-
-      _subjectId = 'mock-subject';
-
-      _detailsBuilder = (_, deck) =>
-          DeckDetailsScreen(deck: deck, store: store);
-    }
+    _repository = widget.repository ?? MockStudyRepository();
+    _subjectId = widget.subjectId ?? 'mock-subject';
+    _detailsBuilder =
+        widget.detailsBuilder ??
+        (_, deck) => DeckDetailsScreen.withRepository(
+          deck: deck,
+          repository: _repository,
+        );
 
     _loadDecks();
   }
