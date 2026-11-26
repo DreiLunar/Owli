@@ -47,6 +47,8 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen> {
 
   bool get _disabled => _loading || _busy || _loadFailed;
 
+  bool get _mutationsDisabled => _disabled || deck.isDeleting;
+
   static const primaryColor = Color(0xFF7C3AED);
   static const backgroundColor = Color(0xFFFAF8FF);
   static const lavenderColor = Color(0xFFEDE9FE);
@@ -205,10 +207,10 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen> {
 
   Future<void> _deleteDeck() => _runAction(() async {
     final confirmed = await _confirm(
-      'Delete deck?',
+      deck.isDeleting ? 'Resume deck deletion?' : 'Delete deck?',
       'This will delete "${deck.title}" and its '
-          '${flashcards.length} flashcards. '
-          'This action cannot be undone.',
+      '${flashcards.length} flashcards. '
+      'This action cannot be undone.',
     );
 
     if (!mounted || !confirmed) return;
@@ -355,31 +357,10 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen> {
           deckTitle: deck.title,
           session: session,
           onSessionCompleted: (results) async {
-            // Detect content changes before saving.
-            final currentCards = await _repository.fetchFlashcards(
-              deckId: deckId,
-            );
-
-            final currentById = {
-              for (final card in currentCards) card.id: card,
-            };
-
-            for (final original in selected) {
-              final current = currentById[original.id];
-
-              if (current == null ||
-                  current.front != original.front ||
-                  current.back != original.back) {
-                throw StateError(
-                  'Flashcard content changed '
-                  'during this study session.',
-                );
-              }
-            }
-
             await _repository.saveSessionResults(
               deckId: deckId,
               results: results,
+              expectedCards: {for (final card in selected) card.id: card},
             );
           },
         ),
@@ -429,7 +410,7 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen> {
 
             IconButton(
               tooltip: 'Edit deck',
-              onPressed: _disabled ? null : _editDeck,
+              onPressed: _mutationsDisabled ? null : _editDeck,
               icon: const Icon(Icons.edit_outlined),
             ),
 
@@ -443,22 +424,14 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen> {
 
         floatingActionButton: FloatingActionButton.extended(
           key: const ValueKey('add_flashcard_button'),
-          onPressed: _disabled ? null : _addFlashcard,
+          onPressed: _mutationsDisabled ? null : _addFlashcard,
           backgroundColor: primaryColor,
           foregroundColor: Colors.white,
           icon: const Icon(Icons.add),
           label: const Text('Add Flashcard'),
         ),
 
-        body: SafeArea(
-          child: Column(
-            children: [
-              if (_busy && !_loading) const LinearProgressIndicator(),
-
-              Expanded(child: _buildBody()),
-            ],
-          ),
-        ),
+        body: SafeArea(child: _buildBody()),
       ),
     );
   }
@@ -513,6 +486,15 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen> {
         children: [
           _buildDeckSummary(),
 
+          if (deck.isDeleting) ...[
+            const SizedBox(height: 16),
+            const Text(
+              'Deck deletion is incomplete. '
+              'Use Delete Deck again to resume cleanup.',
+              style: TextStyle(color: Colors.red),
+            ),
+          ],
+
           const SizedBox(height: 24),
 
           _buildLearningProgress(),
@@ -521,7 +503,9 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen> {
 
           FilledButton.icon(
             key: const ValueKey('start_study_button'),
-            onPressed: _disabled || flashcards.isEmpty ? null : _startStudy,
+            onPressed: _mutationsDisabled || flashcards.isEmpty
+                ? null
+                : _startStudy,
             icon: const Icon(Icons.play_arrow),
             label: const Text('Start Study'),
           ),
@@ -530,7 +514,7 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen> {
 
           OutlinedButton.icon(
             key: const ValueKey('review_still_learning_button'),
-            onPressed: _disabled || _stillLearning == 0
+            onPressed: _mutationsDisabled || _stillLearning == 0
                 ? null
                 : _reviewStillLearning,
             icon: const Icon(Icons.refresh),
@@ -696,13 +680,17 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen> {
 
                 IconButton(
                   tooltip: 'Edit flashcard',
-                  onPressed: _disabled ? null : () => _editFlashcard(card),
+                  onPressed: _mutationsDisabled
+                      ? null
+                      : () => _editFlashcard(card),
                   icon: const Icon(Icons.edit_outlined, color: primaryColor),
                 ),
 
                 IconButton(
                   tooltip: 'Delete flashcard',
-                  onPressed: _disabled ? null : () => _deleteFlashcard(card),
+                  onPressed: _mutationsDisabled
+                      ? null
+                      : () => _deleteFlashcard(card),
                   icon: const Icon(Icons.delete_outline, color: Colors.red),
                 ),
               ],

@@ -21,9 +21,7 @@ abstract interface class StudyRepository {
 
   Future<void> deleteDeck(String deckId);
 
-  Future<List<Flashcard>> fetchFlashcards({
-    required String deckId,
-  });
+  Future<List<Flashcard>> fetchFlashcards({required String deckId});
 
   Future<void> createFlashcard({
     required String deckId,
@@ -43,16 +41,13 @@ abstract interface class StudyRepository {
     required String cardId,
   });
 
-  Future<List<StudyProgress>> fetchProgress({
-    required String deckId,
-  });
+  Future<List<StudyProgress>> fetchProgress({required String deckId});
 
   Future<void> saveSessionResults({
     required String deckId,
     required Map<String, StudyResult> results,
+    Map<String, Flashcard>? expectedCards,
   });
 
-  Future<List<Flashcard>> fetchCardsNeedingReview({
-    required String deckId,
-  });
+  Future<List<Flashcard>> fetchCardsNeedingReview({required String deckId});
 }

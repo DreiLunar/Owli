@@ -83,27 +83,6 @@ class DeckRepository {
     return ref;
   }
 
-  Future<DocumentSnapshot<Map<String, dynamic>>> _requireCard(
-    DocumentReference<Map<String, dynamic>> deckRef,
-    String cardId,
-    String uid,
-  ) async {
-    _requireSameUser(uid);
-
-    final snapshot = await deckRef
-        .collection('cards')
-        .doc(_documentId(cardId))
-        .get(_serverOnly);
-
-    _requireSameUser(uid);
-
-    if (!snapshot.exists || snapshot.data()?['deckId'] != deckRef.id) {
-      throw StateError('Flashcard not found in this deck.');
-    }
-
-    return snapshot;
-  }
-
   Query<Map<String, dynamic>> _progressQuery({
     required String uid,
     required String deckId,
@@ -114,11 +93,18 @@ class DeckRepository {
         .where('deckId', isEqualTo: deckId);
   }
 
-  // Keep destructive operations within one batch.
-  void _validateBatchSize(int documentCount) {
-    if (documentCount > 400) {
-      throw StateError('Too many documents for this MVP operation.');
-    }
+  DocumentReference<Map<String, dynamic>> _progressRef({
+    required String uid,
+    required String deckId,
+    required String cardId,
+  }) {
+    final id = StudyProgressKey.build(
+      userId: uid,
+      deckId: deckId,
+      cardId: cardId,
+    );
+
+    return _db.collection('progress').doc(id);
   }
 
   Future<void> createDeck({
@@ -200,35 +186,76 @@ class DeckRepository {
 
   Future<void> deleteDeck(String deckId) async {
     final uid = _uid;
+    final deckRef = _deckRef(deckId);
 
-    final deckRef = await _requireOwnedDeck(deckId, uid);
+    // Prevent further card and progress writes.
+    await _db.runTransaction<void>((transaction) async {
+      _requireSameUser(uid);
 
-    final cards = await deckRef.collection('cards').get(_serverOnly);
+      final snapshot = await transaction.get(deckRef);
 
-    _requireSameUser(uid);
+      _requireSameUser(uid);
 
-    final progress = await _progressQuery(
-      uid: uid,
-      deckId: deckId,
-    ).get(_serverOnly);
+      if (!snapshot.exists || snapshot.data()?['ownerId'] != uid) {
+        throw StateError('Deck not found or access denied.');
+      }
 
-    _requireSameUser(uid);
+      if (snapshot.data()?['deleting'] != true) {
+        transaction.update(deckRef, {
+          'deleting': true,
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+      }
+    });
 
-    final refs = [
-      ...cards.docs.map((doc) => doc.reference),
-      ...progress.docs.map((doc) => doc.reference),
-      deckRef,
-    ];
+    // Remove progress in small batches.
+    while (true) {
+      _requireSameUser(uid);
 
-    _validateBatchSize(refs.length);
+      final progress = await _progressQuery(
+        uid: uid,
+        deckId: deckId,
+      ).limit(10).get(_serverOnly);
 
-    final batch = _db.batch();
+      _requireSameUser(uid);
 
-    for (final ref in refs) {
-      batch.delete(ref);
+      if (progress.docs.isEmpty) break;
+
+      final batch = _db.batch();
+
+      for (final document in progress.docs) {
+        batch.delete(document.reference);
+      }
+
+      await batch.commit();
     }
 
-    await batch.commit();
+    // Remove nested flashcards.
+    while (true) {
+      _requireSameUser(uid);
+
+      final cards = await deckRef
+          .collection('cards')
+          .limit(10)
+          .get(_serverOnly);
+
+      _requireSameUser(uid);
+
+      if (cards.docs.isEmpty) break;
+
+      final batch = _db.batch();
+
+      for (final document in cards.docs) {
+        batch.delete(document.reference);
+      }
+
+      await batch.commit();
+    }
+
+    _requireSameUser(uid);
+
+    // Delete the parent only after cleanup.
+    await deckRef.delete();
   }
 
   Future<List<Flashcard>> fetchFlashcards({required String deckId}) async {
@@ -293,43 +320,48 @@ class DeckRepository {
     required String back,
   }) async {
     final uid = _uid;
+
     final cleanFront = _requiredText(front, 'Question');
     final cleanBack = _requiredText(back, 'Answer');
 
-    final deckRef = await _requireOwnedDeck(deckId, uid);
+    final deckRef = _deckRef(deckId);
+    final cardRef = deckRef.collection('cards').doc(_documentId(cardId));
 
-    final card = await _requireCard(deckRef, cardId, uid);
+    final progressRef = _progressRef(uid: uid, deckId: deckId, cardId: cardId);
 
-    final previous = card.data()!;
+    await _db.runTransaction<void>((transaction) async {
+      _requireSameUser(uid);
 
-    final contentChanged =
-        previous['front'] != cleanFront || previous['back'] != cleanBack;
-
-    final batch = _db.batch();
-
-    if (contentChanged) {
-      final progress = await _progressQuery(
-        uid: uid,
-        deckId: deckId,
-      ).where('cardId', isEqualTo: cardId).get(_serverOnly);
+      final parent = await transaction.get(deckRef);
+      final card = await transaction.get(cardRef);
 
       _requireSameUser(uid);
-      _validateBatchSize(progress.docs.length + 1);
 
-      for (final document in progress.docs) {
-        batch.delete(document.reference);
+      if (!parent.exists ||
+          parent.data()?['ownerId'] != uid ||
+          parent.data()?['deleting'] == true) {
+        throw StateError('Deck unavailable.');
       }
-    }
 
-    _requireSameUser(uid);
+      if (!card.exists || card.data()?['deckId'] != deckId) {
+        throw StateError('Flashcard not found.');
+      }
 
-    batch.update(card.reference, {
-      'front': cleanFront,
-      'back': cleanBack,
-      'updatedAt': FieldValue.serverTimestamp(),
+      final previous = card.data()!;
+
+      final changed =
+          previous['front'] != cleanFront || previous['back'] != cleanBack;
+
+      if (!changed) return;
+
+      transaction.delete(progressRef);
+
+      transaction.update(cardRef, {
+        'front': cleanFront,
+        'back': cleanBack,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
     });
-
-    await batch.commit();
   }
 
   Future<void> deleteFlashcard({
@@ -338,27 +370,32 @@ class DeckRepository {
   }) async {
     final uid = _uid;
 
-    final deckRef = await _requireOwnedDeck(deckId, uid);
+    final deckRef = _deckRef(deckId);
+    final cardRef = deckRef.collection('cards').doc(_documentId(cardId));
 
-    final card = await _requireCard(deckRef, cardId, uid);
+    final progressRef = _progressRef(uid: uid, deckId: deckId, cardId: cardId);
 
-    final progress = await _progressQuery(
-      uid: uid,
-      deckId: deckId,
-    ).where('cardId', isEqualTo: cardId).get(_serverOnly);
+    await _db.runTransaction<void>((transaction) async {
+      _requireSameUser(uid);
 
-    _requireSameUser(uid);
-    _validateBatchSize(progress.docs.length + 1);
+      final parent = await transaction.get(deckRef);
+      final card = await transaction.get(cardRef);
 
-    final batch = _db.batch();
+      _requireSameUser(uid);
 
-    for (final document in progress.docs) {
-      batch.delete(document.reference);
-    }
+      if (!parent.exists ||
+          parent.data()?['ownerId'] != uid ||
+          parent.data()?['deleting'] == true) {
+        throw StateError('Deck unavailable.');
+      }
 
-    batch.delete(card.reference);
+      if (!card.exists || card.data()?['deckId'] != deckId) {
+        throw StateError('Flashcard not found.');
+      }
 
-    await batch.commit();
+      transaction.delete(progressRef);
+      transaction.delete(cardRef);
+    });
   }
 
   Future<List<StudyProgress>> fetchProgress({required String deckId}) async {
@@ -407,6 +444,7 @@ class DeckRepository {
   Future<void> saveSessionResults({
     required String deckId,
     required Map<String, StudyResult> results,
+    Map<String, Flashcard>? expectedCards,
   }) async {
     final uid = _uid;
 
@@ -422,6 +460,14 @@ class DeckRepository {
     }
 
     final sessionResults = Map<String, StudyResult>.unmodifiable(results);
+
+    final expected = expectedCards == null
+        ? null
+        : Map<String, Flashcard>.unmodifiable(expectedCards);
+
+    if (expected != null && expected.length != sessionResults.length) {
+      throw ArgumentError('Session snapshot mismatch.');
+    }
 
     final deckRef = _deckRef(deckId);
 
@@ -449,6 +495,10 @@ class DeckRepository {
         throw StateError('Deck not found or access denied.');
       }
 
+      if (deckSnapshot.data()?['deleting'] == true) {
+        throw StateError('This deck is being deleted.');
+      }
+
       // All transaction reads happen before any writes.
       for (final cardId in sessionResults.keys) {
         final cardRef = deckRef.collection('cards').doc(cardId);
@@ -462,6 +512,19 @@ class DeckRepository {
             'A flashcard is missing or belongs '
             'to another deck.',
           );
+        }
+
+        if (expected != null) {
+          final original = expected[cardId];
+          final current = cardSnapshot.data()!;
+
+          if (original == null ||
+              original.id != cardId ||
+              original.deckId != deckId ||
+              original.front != current['front'] ||
+              original.back != current['back']) {
+            throw StateError('Flashcard content changed during study.');
+          }
         }
       }
 

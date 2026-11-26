@@ -54,3 +54,4 @@ lib/firebase_options.dart
 # Local Firebase configuration
 /android/app/google-services.json
 /lib/firebase_options.dart
+tools/study-rules/node_modules/

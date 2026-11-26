@@ -168,6 +168,7 @@ class _CreateFlashcardScreenState extends State<CreateFlashcardScreen> {
 
                 // Question field
                 TextFormField(
+                  maxLength: 10000,
                   controller: _frontController,
                   enabled: !_isSaving,
                   textCapitalization: TextCapitalization.sentences,
@@ -188,6 +189,7 @@ class _CreateFlashcardScreenState extends State<CreateFlashcardScreen> {
 
                 // Answer field
                 TextFormField(
+                  maxLength: 10000,
                   controller: _backController,
                   enabled: !_isSaving,
                   textCapitalization: TextCapitalization.sentences,
