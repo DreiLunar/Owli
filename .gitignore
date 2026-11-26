@@ -38,7 +38,20 @@
 *.jks
 *.keystore
 key.properties
+*-firebase-adminsdk-*.json
+serviceAccount*.json
+
+.firebase/
+firebase-debug.log
+firestore-debug.log
 
 # Debugging artifacts
 app.*.symbols
 app.*.map.json
+android/app/google-services.json 
+lib/firebase_options.dart 
+
+# Local Firebase configuration
+/android/app/google-services.json
+/lib/firebase_options.dart
+tools/study-rules/node_modules/
