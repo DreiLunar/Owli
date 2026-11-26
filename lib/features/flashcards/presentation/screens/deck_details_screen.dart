@@ -2,6 +2,7 @@ import 'package:material_ui/material_ui.dart';
 
 import '../../domain/models/deck.dart';
 import '../../domain/models/flashcard.dart';
+import '../../domain/models/study_progress.dart';
 import '../../data/mock/mock_study_store.dart';
 import '../../domain/services/study_session_controller.dart';
 import 'create_deck_screen.dart';
@@ -24,6 +25,7 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen> {
   static const primaryColor = Color(0xFF7C3AED);
   static const backgroundColor = Color(0xFFFAF8FF);
   static const lavenderColor = Color(0xFFEDE9FE);
+  static const _mockUserId = 'mock_user';
 
   List<Flashcard> get flashcards => widget.store.cardsForDeck(deck.id);
 
@@ -202,22 +204,51 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen> {
     );
   }
 
-  // START STUDY SESSION
-  void _startStudy() {
-    final cards = flashcards;
+  // STUDY ALL CARDS
+  Future<void> _startStudy() async {
+    await _openStudySession(flashcards);
+  }
 
+  // STUDY ONLY CARDS MARKED STILL LEARNING
+  Future<void> _reviewStillLearning() async {
+    final cards = widget.store.cardsNeedingReview(
+      userId: _mockUserId,
+      deckId: deck.id,
+    );
+
+    await _openStudySession(cards);
+  }
+
+  // OPEN AND MANAGE A STUDY SESSION
+  Future<void> _openStudySession(List<Flashcard> cards) async {
     if (cards.isEmpty) {
       return;
     }
 
     final session = StudySessionController(deckId: deck.id, cards: cards);
 
-    Navigator.of(context).push<void>(
+    await Navigator.of(context).push<void>(
       MaterialPageRoute(
-        builder: (context) =>
-            StudySessionScreen(deckTitle: deck.title, session: session),
+        builder: (context) => StudySessionScreen(
+          deckTitle: deck.title,
+          session: session,
+
+          onSessionCompleted: (results) {
+            widget.store.saveSessionResults(
+              userId: _mockUserId,
+              deckId: deck.id,
+              results: results,
+            );
+          },
+        ),
       ),
     );
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {});
   }
 
   @override
@@ -301,6 +332,10 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen> {
             ),
 
             const SizedBox(height: 24),
+            _buildLearningProgress(),
+
+            const SizedBox(height: 24),
+
             // Start study button
             FilledButton.icon(
               key: const ValueKey('start_study_button'),
@@ -314,6 +349,35 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen> {
               style: FilledButton.styleFrom(
                 backgroundColor: primaryColor,
                 foregroundColor: Colors.white,
+                minimumSize: const Size.fromHeight(54),
+
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 12),
+
+            OutlinedButton.icon(
+              key: const ValueKey('review_still_learning_button'),
+
+              onPressed:
+                  widget.store
+                      .cardsNeedingReview(userId: _mockUserId, deckId: deck.id)
+                      .isEmpty
+                  ? null
+                  : _reviewStillLearning,
+
+              icon: const Icon(Icons.refresh),
+
+              label: Text(
+                'Review Still Learning '
+                '(${widget.store.cardsNeedingReview(userId: _mockUserId, deckId: deck.id).length})',
+              ),
+
+              style: OutlinedButton.styleFrom(
+                foregroundColor: primaryColor,
                 minimumSize: const Size.fromHeight(54),
 
                 shape: RoundedRectangleBorder(
@@ -373,6 +437,114 @@ class _DeckDetailsScreenState extends State<DeckDetailsScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildLearningProgress() {
+    final total = flashcards.length;
+
+    final progress = widget.store.progressForDeck(
+      userId: _mockUserId,
+      deckId: deck.id,
+    );
+
+    final gotIt = progress
+        .where((item) => item.lastResult == StudyResult.gotIt)
+        .length;
+
+    final stillLearning = progress
+        .where((item) => item.lastResult == StudyResult.stillLearning)
+        .length;
+
+    final notReviewed = total - progress.length;
+
+    final double knownFraction = total == 0 ? 0.0 : gotIt / total;
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFE8E2F3)),
+      ),
+
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+
+        children: [
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'Learning Progress',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+              ),
+
+              Text(
+                '${(knownFraction * 100).toStringAsFixed(0)}%',
+                style: const TextStyle(
+                  color: primaryColor,
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 8),
+
+          const Text(
+            'Based on your latest flashcard ratings.',
+            style: TextStyle(fontSize: 12, color: Colors.black54),
+          ),
+
+          const SizedBox(height: 16),
+
+          LinearProgressIndicator(
+            value: knownFraction,
+            minHeight: 8,
+            backgroundColor: lavenderColor,
+            valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF15803D)),
+            borderRadius: BorderRadius.circular(8),
+          ),
+
+          const SizedBox(height: 20),
+
+          _buildProgressRow('Got It', gotIt, const Color(0xFF15803D)),
+
+          const SizedBox(height: 12),
+
+          _buildProgressRow(
+            'Still Learning',
+            stillLearning,
+            const Color(0xFFB45309),
+          ),
+
+          const SizedBox(height: 12),
+
+          _buildProgressRow('Not Reviewed', notReviewed, Colors.grey),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildProgressRow(String label, int count, Color color) {
+    return Row(
+      children: [
+        Icon(Icons.circle, color: color, size: 12),
+
+        const SizedBox(width: 10),
+
+        Expanded(child: Text(label)),
+
+        Text(
+          '$count',
+          key: ValueKey('progress_$label'),
+          style: TextStyle(color: color, fontWeight: FontWeight.bold),
+        ),
+      ],
     );
   }
 
